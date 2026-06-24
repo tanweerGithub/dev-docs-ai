@@ -2,10 +2,13 @@
 
 import { useEffect, useRef } from "react";
 import { Network } from "lucide-react";
+import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
+import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
 
 export function DiagramView() {
-  const { diagram } = useApp();
+  const { diagram, diagramMeta } = useApp();
+  const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -17,14 +20,22 @@ export function DiagramView() {
       const mermaid = (await import("mermaid")).default;
       mermaid.initialize({
         startOnLoad: false,
-        theme: "dark",
-        themeVariables: {
-          primaryColor: "#3b82f6",
-          primaryTextColor: "#e4e4e7",
-          lineColor: "#52525b",
-          secondaryColor: "#18181b",
-          tertiaryColor: "#27272a",
-        },
+        theme: isLight ? "neutral" : "dark",
+        themeVariables: isLight
+          ? {
+              primaryColor: "#dbeafe",
+              primaryTextColor: "#18181b",
+              lineColor: "#a1a1aa",
+              secondaryColor: "#f4f4f5",
+              tertiaryColor: "#e4e4e7",
+            }
+          : {
+              primaryColor: "#3b82f6",
+              primaryTextColor: "#e4e4e7",
+              lineColor: "#52525b",
+              secondaryColor: "#18181b",
+              tertiaryColor: "#27272a",
+            },
       });
 
       if (cancelled || !containerRef.current) return;
@@ -37,7 +48,7 @@ export function DiagramView() {
     return () => {
       cancelled = true;
     };
-  }, [diagram]);
+  }, [diagram, isLight]);
 
   if (!diagram) {
     return (
@@ -54,6 +65,7 @@ export function DiagramView() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
+      <ArtifactBanner meta={diagramMeta} />
       <div className="border-b border-zinc-800 px-4 py-2">
         <span className="text-xs text-zinc-500">Research diagram</span>
       </div>

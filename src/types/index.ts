@@ -1,11 +1,12 @@
-export type ResourceType = "url" | "pdf";
+export type ResourceType = "url" | "file";
 
 export interface Resource {
   id: string;
   type: ResourceType;
   name: string;
   url?: string;
-  pdfBase64?: string;
+  mimeType?: string;
+  fileBase64?: string;
   previewUrl?: string;
   addedAt: Date;
 }
@@ -17,6 +18,14 @@ export interface DocCitation {
   url?: string;
 }
 
+export interface ChatCitation {
+  label: string;
+  excerpt?: string;
+  url?: string;
+  resourceId?: string;
+  source: "document" | "web";
+}
+
 export interface CodeBlock {
   language: string;
   code: string;
@@ -24,7 +33,7 @@ export interface CodeBlock {
 
 export interface ComparisonItem {
   name: string;
-  scores: {
+  scores?: {
     easeOfUse: number;
     documentation: number;
     flexibility: number;
@@ -44,14 +53,21 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
-  citations?: string[];
+  citations?: ChatCitation[] | string[];
+  scopedLabel?: string;
 }
 
 export type CanvasTab = "document" | "playground" | "comparison" | "diagram";
 
+export interface ArtifactMeta {
+  query: string;
+  sourceIds: string[];
+  sourceLabel: string;
+}
+
 export interface ResearchResponse {
   answer: string;
-  citations: string[];
+  citations: ChatCitation[];
   code: CodeBlock | null;
   comparison: ComparisonResult | null;
   diagram: string | null;

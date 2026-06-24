@@ -9,9 +9,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { DEMOS, type DemoId } from "@/data/demos";
 import { WELCOME_MESSAGES } from "@/data/initial";
 import { getStoredApiKey } from "@/lib/api-key-storage";
+import { fallbackResourceName } from "@/lib/page-title";
 import type {
+  ArtifactMeta,
   CanvasTab,
   ChatMessage,
   CodeBlock,
@@ -19,23 +22,55 @@ import type {
   Resource,
 } from "@/types";
 
+const ACCEPTED_FILE_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "text/csv",
+]);
+
+function buildArtifactMeta(
+  query: string,
+  scoped: Resource[]
+): ArtifactMeta {
+  return {
+    query,
+    sourceIds: scoped.map((r) => r.id),
+    sourceLabel:
+      scoped.length === 0
+        ? "No sources"
+        : scoped.map((r) => r.name).join(" · "),
+  };
+}
+
 interface AppContextValue {
   resources: Resource[];
-  addUrl: (url: string) => void;
-  addPdf: (file: File) => void;
+  addUrl: (url: string) => Promise<void>;
+  addFile: (file: File) => void;
   removeResource: (id: string) => void;
   selectedId: string | null;
   selectResource: (id: string) => void;
   activeTab: CanvasTab;
   setActiveTab: (tab: CanvasTab) => void;
   messages: ChatMessage[];
-  addMessage: (content: string) => Promise<void>;
+  addMessage: (content: string, resourceIds?: string[]) => Promise<void>;
   isLoading: boolean;
   code: CodeBlock | null;
+  codeMeta: ArtifactMeta | null;
   comparison: ComparisonResult | null;
+  comparisonMeta: ArtifactMeta | null;
   diagram: string | null;
+  diagramMeta: ArtifactMeta | null;
   apiKey: string | null;
   setApiKey: (key: string | null) => void;
+  loadDemo: (id: DemoId) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -47,8 +82,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>(WELCOME_MESSAGES);
   const [isLoading, setIsLoading] = useState(false);
   const [code, setCode] = useState<CodeBlock | null>(null);
+  const [codeMeta, setCodeMeta] = useState<ArtifactMeta | null>(null);
   const [comparison, setComparison] = useState<ComparisonResult | null>(null);
+  const [comparisonMeta, setComparisonMeta] = useState<ArtifactMeta | null>(
+    null
+  );
   const [diagram, setDiagram] = useState<string | null>(null);
+  const [diagramMeta, setDiagramMeta] = useState<ArtifactMeta | null>(null);
   const [apiKey, setApiKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,25 +101,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setActiveTab("document");
   }, []);
 
-  const addUrl = useCallback((url: string) => {
+  const addUrl = useCallback(async (url: string) => {
     const trimmed = url.trim();
     if (!trimmed) return;
 
-    let name = trimmed;
-    try {
-      const u = new URL(trimmed);
-      name = u.hostname + u.pathname.slice(0, 50);
-    } catch {
-      name = trimmed.slice(0, 60);
-    }
-
-    if (resources.some((r) => r.url === trimmed)) return;
+    const existing = resources.some((r) => r.url === trimmed);
+    if (existing) return;
 
     const id = `doc-${Date.now()}`;
     const resource: Resource = {
       id,
       type: "url",
-      name,
+      name: fallbackResourceName(trimmed),
       url: trimmed,
       addedAt: new Date(),
     };
@@ -87,21 +120,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setResources((prev) => [resource, ...prev]);
     setSelectedId(id);
     setActiveTab("document");
+
+    try {
+      const res = await fetch(
+        `/api/page-title?url=${encodeURIComponent(trimmed)}`
+      );
+      const data = (await res.json()) as { title?: string };
+      if (data.title) {
+        setResources((prev) =>
+          prev.map((r) =>
+            r.id === id ? { ...r, name: data.title as string } : r
+          )
+        );
+      }
+    } catch {
+      // keep fallback name
+    }
   }, [resources]);
 
-  const addPdf = useCallback((file: File) => {
+  const addFile = useCallback((file: File) => {
+    const mimeType = file.type || "application/octet-stream";
+    if (!ACCEPTED_FILE_TYPES.has(mimeType)) return;
+
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const base64 = dataUrl.split(",")[1];
       const previewUrl = URL.createObjectURL(file);
-      const id = `pdf-${Date.now()}`;
+      const id = `file-${Date.now()}`;
 
       const resource: Resource = {
         id,
-        type: "pdf",
+        type: "file",
         name: file.name,
-        pdfBase64: base64,
+        mimeType,
+        fileBase64: base64,
         previewUrl,
         addedAt: new Date(),
       };
@@ -111,6 +164,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setActiveTab("document");
     };
     reader.readAsDataURL(file);
+  }, []);
+
+  const loadDemo = useCallback((id: DemoId) => {
+    const demo = DEMOS[id];
+    if (!demo) return;
+
+    const meta = buildArtifactMeta(
+      demo.messages.find((m) => m.role === "user")?.content ?? demo.label,
+      demo.resources
+    );
+
+    setResources(demo.resources);
+    setSelectedId(demo.selectedId);
+    setActiveTab("document");
+    setMessages(demo.messages);
+    setDiagram(demo.diagram);
+    setDiagramMeta(demo.diagram ? meta : null);
+
+    if (demo.comparison) {
+      setComparison(demo.comparison);
+      setComparisonMeta(meta);
+      setCode(null);
+      setCodeMeta(null);
+    } else {
+      setComparison(null);
+      setComparisonMeta(null);
+      setCode(demo.code);
+      setCodeMeta(demo.code ? meta : null);
+    }
   }, []);
 
   const removeResource = useCallback((id: string) => {
@@ -123,7 +205,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addMessage = useCallback(
-    async (content: string) => {
+    async (content: string, resourceIds?: string[]) => {
+      const scoped =
+        resourceIds && resourceIds.length > 0
+          ? resources.filter((r) => resourceIds.includes(r.id))
+          : resources;
+
+      const scopedLabel =
+        scoped.length > 0 && scoped.length < resources.length
+          ? scoped.map((r) => r.name).join(" · ")
+          : undefined;
+
       setMessages((prev) => [
         ...prev,
         {
@@ -131,32 +223,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
           role: "user",
           content,
           timestamp: new Date(),
+          scopedLabel,
         },
       ]);
       setIsLoading(true);
 
       try {
+        const meta = buildArtifactMeta(content, scoped);
+        const scope =
+          scoped.length > 0 && scoped.length < resources.length
+            ? "active"
+            : "all";
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: content,
-            resources: resources.map(({ previewUrl: _, ...r }) => r),
+            resources: scoped.map(({ previewUrl, ...r }) => r),
             apiKey,
+            scope,
           }),
         });
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Request failed");
 
-        if (data.code) {
-          setCode(data.code);
-        }
         if (data.comparison) {
           setComparison(data.comparison);
+          setComparisonMeta(meta);
+          setCode(null);
+          setCodeMeta(null);
+        } else if (data.code) {
+          setCode(data.code);
+          setCodeMeta(meta);
         }
         if (data.diagram) {
           setDiagram(data.diagram);
+          setDiagramMeta(meta);
         }
 
         const validTabs: CanvasTab[] = [
@@ -207,7 +311,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       resources,
       addUrl,
-      addPdf,
+      addFile,
       removeResource,
       selectedId,
       selectResource,
@@ -217,15 +321,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addMessage,
       isLoading,
       code,
+      codeMeta,
       comparison,
+      comparisonMeta,
       diagram,
+      diagramMeta,
       apiKey,
       setApiKey,
+      loadDemo,
     }),
     [
       resources,
       addUrl,
-      addPdf,
+      addFile,
       removeResource,
       selectedId,
       selectResource,
@@ -234,9 +342,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addMessage,
       isLoading,
       code,
+      codeMeta,
       comparison,
+      comparisonMeta,
       diagram,
+      diagramMeta,
       apiKey,
+      loadDemo,
     ]
   );
 

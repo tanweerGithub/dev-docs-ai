@@ -1,52 +1,71 @@
-import type { ResearchResponse, Resource } from "@/types";
+import { enrichCitations, type RawCitation } from "@/lib/citations";
+import type { ChatCitation, ResearchResponse, Resource } from "@/types";
 
 const MODEL = "gemini-2.0-flash";
+
+const GEMINI_FILE_MIMES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+  "text/plain",
+  "text/markdown",
+  "text/html",
+  "text/csv",
+]);
 
 function buildPrompt(message: string, resources: Resource[]): string {
   const docList = resources
     .map((r, i) => {
       if (r.type === "url") {
-        return `[${i + 1}] ${r.name}\n    URL: ${r.url}`;
+        return `[${i + 1}] id: doc-${i + 1} | name: "${r.name}" | url: ${r.url}`;
       }
-      return `[${i + 1}] ${r.name}\n    Type: PDF (attached as file)`;
+      return `[${i + 1}] id: doc-${i + 1} | name: "${r.name}" | type: ${r.mimeType ?? "file"} (attached inline)`;
     })
     .join("\n");
 
-  return `You are an agentic multi-document research assistant.
+  return `You are DevDocs AI — a multi-document research assistant for technical documentation. You help developers research libraries, APIs, and frameworks from their uploaded docs.
 
-The user uploaded these research materials:
+The user's sources (cite these by sourceIndex — primary grounding):
 ${docList || "No documents yet."}
 
 User question: ${message}
 
 Respond with JSON only:
 {
-  "answer": "Clear research answer in markdown. Cite which document(s) you used.",
-  "citations": ["Document name — key point or URL"],
-  "code": { "language": "python", "code": "..." } or null if not needed,
-  "comparison": {
-    "title": "Comparison title",
-    "task": "What task the code snippets demonstrate",
-    "items": [
-      {
-        "name": "Library or approach name",
-        "scores": { "easeOfUse": 1-10, "documentation": 1-10, "flexibility": 1-10 },
-        "codeSnippet": "minimal code for the SAME task",
-        "codeLanguage": "python"
-      }
-    ]
-  } or null,
-  "diagram": "mermaid flowchart/graph TD syntax string" or null,
+  "answer": "Clear research answer in markdown. Reference sources inline like [1] or by name. Prefer facts from the user's sources above.",
+  "citations": [
+    {
+      "sourceIndex": 1,
+      "label": "Exact source name from the list above",
+      "excerpt": "Short quoted or paraphrased point from that source",
+      "url": "URL if source is a url type, else null",
+      "source": "document"
+    }
+  ],
+  "code": { "language": "python", "code": "..." } or null,
+  "comparison": { ... } or null,
+  "diagram": "mermaid string" or null,
   "suggestedTab": "document|playground|comparison|diagram|null"
 }
 
-Rules:
-- Ground answers in the provided documents/URLs/PDFs only.
-- Include code only when the user needs implementation.
-- Include comparison only when user asks to compare approaches/libraries.
-- Include diagram when architecture/relationships would help.
-- No winner recommendations in comparisons — neutral side-by-side only.
-- suggestedTab hints which center panel is most relevant.`;
+Citation rules (critical):
+- ALWAYS cite user's uploaded sources first when used. Each citation must use sourceIndex matching [1], [2], etc.
+- Set source to "document" for user sources. Include their url field when the source has a URL.
+- Only add source: "web" citations for information NOT in user sources — include a real https url from url_context/search.
+- Every factual claim in answer should trace to a citation from documents when possible.
+- Do not invent sourceIndex values — only use indices from the source list.
+
+Research rules:
+- Ground answers primarily in provided documents/URLs/files via url_context and inline files.
+- Use web search (url_context) only to supplement gaps — mark those citations source: "web".
+- LangChain 1.x: create_agent only, never AgentExecutor.
+- Google ADK: Agent class with run().
+- Comparison: LangChain first, Google ADK second, same task, suggestedTab "comparison", code null.
+- Single-framework code: suggestedTab "playground".`;
 }
 
 function parseJson<T>(text: string): T {
@@ -56,6 +75,15 @@ function parseJson<T>(text: string): T {
     .replace(/\s*```$/i, "")
     .trim();
   return JSON.parse(cleaned) as T;
+}
+
+interface ParsedResearchResponse {
+  answer: string;
+  citations?: (string | RawCitation)[];
+  code?: ResearchResponse["code"];
+  comparison?: ResearchResponse["comparison"];
+  diagram?: string | null;
+  suggestedTab?: ResearchResponse["suggestedTab"];
 }
 
 export async function researchWithGemini(
@@ -68,11 +96,11 @@ export async function researchWithGemini(
   ];
 
   for (const r of resources) {
-    if (r.type === "pdf" && r.pdfBase64) {
+    if (r.type === "file" && r.fileBase64 && r.mimeType && GEMINI_FILE_MIMES.has(r.mimeType)) {
       parts.push({
         inline_data: {
-          mime_type: "application/pdf",
-          data: r.pdfBase64,
+          mime_type: r.mimeType,
+          data: r.fileBase64,
         },
       });
     }
@@ -89,7 +117,7 @@ export async function researchWithGemini(
 
   const urlResources = resources.filter((r) => r.type === "url" && r.url);
   if (urlResources.length > 0) {
-    body.tools = [{ url_context: {} }];
+    body.tools = [{ url_context: {} }, { google_search: {} }];
   }
 
   const res = await fetch(
@@ -115,11 +143,16 @@ export async function researchWithGemini(
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
   if (!text) throw new Error("Empty response from Gemini");
 
-  const parsed = parseJson<ResearchResponse>(text);
+  const parsed = parseJson<ParsedResearchResponse>(text);
+  const citations: ChatCitation[] = enrichCitations(
+    parsed.citations,
+    resources
+  );
+
   return {
     answer: parsed.answer,
-    citations: parsed.citations ?? [],
-    code: parsed.code ?? null,
+    citations,
+    code: parsed.comparison ? null : (parsed.code ?? null),
     comparison: parsed.comparison ?? null,
     diagram: parsed.diagram ?? null,
     suggestedTab: parsed.suggestedTab ?? null,

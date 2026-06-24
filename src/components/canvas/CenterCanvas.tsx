@@ -19,7 +19,7 @@ export function CenterCanvas() {
   const { activeTab, setActiveTab, code, comparison, diagram } = useApp();
 
   const hasContent = {
-    playground: !!code,
+    playground: !!code && !comparison,
     comparison: !!comparison,
     diagram: !!diagram,
   };

@@ -1,7 +1,8 @@
 "use client";
 
-import { BookMarked } from "lucide-react";
+import { BookMarked, Moon, Sun } from "lucide-react";
 import { AppProvider, useApp } from "@/context/AppContext";
+import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { AgentChat } from "@/components/panels/AgentChat";
 import { ResourcePanel } from "@/components/panels/ResourcePanel";
 import { CenterCanvas } from "@/components/canvas/CenterCanvas";
@@ -9,6 +10,7 @@ import { ApiKeySettings } from "@/components/settings/ApiKeySettings";
 
 function Header() {
   const { resources } = useApp();
+  const { isLight, toggleTheme } = useTheme();
 
   return (
     <header className="flex h-11 shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4">
@@ -21,9 +23,22 @@ function Header() {
         </h1>
       </div>
       <span className="hidden text-[10px] text-zinc-600 sm:inline">
-        Multi-Document Research & Q&A Assistant
+        Multi-Document Research for Technical Docs
       </span>
       <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={isLight ? "Switch to dark mode" : "Switch to light mode"}
+          aria-label={isLight ? "Switch to dark mode" : "Switch to light mode"}
+          className="rounded-lg border border-zinc-700 p-1.5 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+        >
+          {isLight ? (
+            <Moon className="h-3.5 w-3.5" />
+          ) : (
+            <Sun className="h-3.5 w-3.5" />
+          )}
+        </button>
         <ApiKeySettings />
         <span className="text-[10px] text-zinc-500">
           {resources.length} source{resources.length === 1 ? "" : "s"}
@@ -34,8 +49,13 @@ function Header() {
 }
 
 function Shell() {
+  const { theme } = useTheme();
+
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+    <div
+      data-theme={theme}
+      className="theme-root flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100"
+    >
       <Header />
       <div className="flex min-h-0 flex-1">
         <ResourcePanel />
@@ -48,8 +68,10 @@ function Shell() {
 
 export function AppShell() {
   return (
-    <AppProvider>
-      <Shell />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <Shell />
+      </AppProvider>
+    </ThemeProvider>
   );
 }
