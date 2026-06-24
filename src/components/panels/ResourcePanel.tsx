@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BookOpen,
   FileText,
@@ -11,6 +11,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { DEMO_STACK } from "@/data/demo-stack";
 import { useApp } from "@/context/AppContext";
 import type { ResourceType } from "@/types";
 
@@ -33,6 +34,11 @@ export function ResourcePanel() {
   const { resources, addResource, removeResource } = useApp();
   const [mode, setMode] = useState<InputMode>("docs");
   const [inputValue, setInputValue] = useState("");
+
+  const remainingDemoItems = useMemo(() => {
+    const addedUrls = new Set(resources.map((r) => r.url).filter(Boolean));
+    return DEMO_STACK.filter((item) => !addedUrls.has(item.url));
+  }, [resources]);
 
   const handleAdd = () => {
     if (mode === "pdf") return;
@@ -135,27 +141,11 @@ export function ResourcePanel() {
           </span>
         </div>
 
-        {resources.length === 0 && (
+        {remainingDemoItems.length > 0 && (
           <div className="mb-3 rounded-lg border border-dashed border-zinc-800 p-3">
             <p className="mb-2 text-[10px] text-zinc-500">Quick-add demo stack:</p>
             <div className="flex flex-col gap-1.5">
-              {[
-                {
-                  type: "github" as const,
-                  name: "fastapi/fastapi",
-                  url: "https://github.com/fastapi/fastapi",
-                },
-                {
-                  type: "docs" as const,
-                  name: "Redis Python Client",
-                  url: "https://redis.io/docs/latest/develop/clients/redis-py/",
-                },
-                {
-                  type: "docs" as const,
-                  name: "Celery Documentation",
-                  url: "https://docs.celeryq.dev/en/stable/",
-                },
-              ].map((item) => (
+              {remainingDemoItems.map((item) => (
                 <button
                   key={item.url}
                   onClick={() => addResource(item)}

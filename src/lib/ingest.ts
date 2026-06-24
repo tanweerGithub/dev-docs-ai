@@ -59,9 +59,9 @@ export async function ingestDocs(url: string): Promise<IngestResult> {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 600);
+    .slice(0, 3000);
 
-  const summary = textOnly.slice(0, 200) || `Documentation from ${title}`;
+  const summary = textOnly.slice(0, 2000) || `Documentation from ${title}`;
 
   return {
     name: title,

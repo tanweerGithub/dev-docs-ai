@@ -73,7 +73,7 @@ export function AgentChat() {
               Agentic Debugger
             </h2>
             <p className="text-xs text-zinc-500">
-              {apiKey ? "AI-powered · grounded in your docs" : "Add API key for AI chat"}
+              {apiKey ? "Gemini · grounded in your docs" : "Add Gemini key for AI chat"}
             </p>
           </div>
         </div>

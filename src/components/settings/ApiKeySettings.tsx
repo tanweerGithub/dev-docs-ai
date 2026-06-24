@@ -39,7 +39,7 @@ export function ApiKeySettings() {
         }`}
       >
         <KeyRound className="h-3 w-3" />
-        {apiKey ? `AI: ${maskApiKey(apiKey)}` : "Add API key"}
+        {apiKey ? `Gemini: ${maskApiKey(apiKey)}` : "Add Gemini key"}
       </button>
 
       {open && (
@@ -47,7 +47,7 @@ export function ApiKeySettings() {
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-zinc-100">
-                OpenAI API Key
+                Gemini API Key
               </h3>
               <button
                 onClick={() => setOpen(false)}
@@ -58,15 +58,15 @@ export function ApiKeySettings() {
             </div>
 
             <p className="mb-4 text-xs leading-relaxed text-zinc-500">
-              Stored locally in your browser only. Used to power AI chat grounded
-              in your indexed documentation. Get a key at{" "}
+              Stored locally in your browser only. Powers doc-grounded chat and
+              code generation. Get a key at{" "}
               <a
-                href="https://platform.openai.com/api-keys"
+                href="https://aistudio.google.com/apikey"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-400 hover:underline"
               >
-                platform.openai.com
+                aistudio.google.com
               </a>
               .
             </p>
@@ -75,7 +75,7 @@ export function ApiKeySettings() {
               type="password"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="sk-..."
+              placeholder="AIza..."
               className="mb-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
             />
 

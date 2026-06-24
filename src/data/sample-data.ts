@@ -11,12 +11,11 @@ export const EMPTY_CODE: CodeBlock = {
   language: "python",
   code: `# DevDocs AI — Interactive Playground
 #
-# End-to-end flow:
-# 1. Add resources on the left (GitHub repo, doc links)
-# 2. Wait for "ready" status after indexing
-# 3. Ask the agent: "Synthesize an integration with caching and background tasks"
+# 1. Add a doc link on the left (e.g. LangChain, Redis, LangGraph docs)
+# 2. Add your Gemini API key (top-right)
+# 3. Ask in chat: "Help me build a chat template for audio and image files"
 #
-# Synthesized code and doc citations will appear here.`,
+# Generated code and doc citations will appear here.`,
   citations: [],
 };
 
@@ -25,11 +24,11 @@ export const INITIAL_MESSAGES: ChatMessage[] = [
     id: "msg-welcome",
     role: "assistant",
     content:
-      "Welcome to DevDocs AI.\n\n1. Add docs/repos on the left (try the quick-add demo stack)\n2. Add your OpenAI API key (top-right) for AI chat\n3. Ask me to synthesize — code, diagrams, and comparisons will appear in the center canvas",
+      "Welcome to DevDocs AI.\n\n1. Paste a doc link on the left (official docs, GitHub readme, etc.)\n2. Add your Gemini API key (top-right)\n3. Ask me anything — e.g. \"help me set up a Redis client\" or \"build a LangChain template for audio\"\n\nI'll answer from your docs, cite sources, and put code in the Playground.",
     timestamp: new Date(),
     suggestions: [
-      "Synthesize an integration with caching and background tasks",
-      "What libraries did you detect from my docs?",
+      "Help me set up a Redis Python client",
+      "Generate code from my indexed documentation",
     ],
   },
 ];

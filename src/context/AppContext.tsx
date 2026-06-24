@@ -29,6 +29,14 @@ import type {
   Resource,
 } from "@/types";
 
+function resourceFingerprint(resources: Resource[]): string {
+  return resources
+    .filter((r) => r.status === "ready")
+    .map((r) => r.id)
+    .sort()
+    .join(",");
+}
+
 interface AppContextValue {
   resources: Resource[];
   addResource: (resource: Omit<Resource, "id" | "addedAt" | "status">) => void;
@@ -46,6 +54,7 @@ interface AppContextValue {
   edges: ArchEdge[];
   readyCount: number;
   hasSynthesized: boolean;
+  needsResynthesis: boolean;
   apiKey: string | null;
   setApiKey: (key: string | null) => void;
 }
@@ -64,6 +73,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [edges, setEdges] = useState<ArchEdge[]>(INITIAL_EDGES);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
+  const [synthesisFingerprint, setSynthesisFingerprint] = useState<
+    string | null
+  >(null);
   const nudgeSentRef = useRef(false);
   const prevReadyCountRef = useRef(0);
 
@@ -73,7 +85,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const readyCount = resources.filter((r) => r.status === "ready").length;
+  const currentFingerprint = resourceFingerprint(resources);
   const hasSynthesized = codeBlock.id !== EMPTY_CODE.id;
+  const needsResynthesis =
+    readyCount > 0 &&
+    (!hasSynthesized || currentFingerprint !== synthesisFingerprint);
 
   useEffect(() => {
     if (
@@ -87,11 +103,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         {
           id: `msg-nudge-${Date.now()}`,
           role: "assistant",
-          content: `Great — ${readyCount} resource${readyCount === 1 ? "" : "s"} indexed. Click "Synthesize integration" in the center banner, or use the suggestion below. Add your OpenAI API key (top-right) for AI-powered answers about your docs.`,
+          content: `Great — ${readyCount} resource${readyCount === 1 ? "" : "s"} indexed. Add your Gemini API key (top-right), then ask me anything about your docs — e.g. "help me set up a Redis client" or "build a LangChain template for audio input". Code appears in Playground with citations.`,
           timestamp: new Date(),
           suggestions: [
-            "Synthesize an integration with caching and background tasks",
-            "What libraries did you detect from my docs?",
+            "Help me set up a Redis Python client",
+            "Generate code from my indexed documentation",
           ],
         },
       ]);
@@ -101,60 +117,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addResource = useCallback(
     (resource: Omit<Resource, "id" | "addedAt" | "status">) => {
-      const id = `res-${Date.now()}`;
-      const newResource: Resource = {
-        ...resource,
-        id,
-        status: "indexing",
-        addedAt: new Date(),
-      };
+      setResources((prev) => {
+        if (resource.url && prev.some((r) => r.url === resource.url)) {
+          return prev;
+        }
 
-      setResources((prev) => [newResource, ...prev]);
+        const id = `res-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const newResource: Resource = {
+          ...resource,
+          id,
+          status: "indexing",
+          addedAt: new Date(),
+        };
 
-      (async () => {
-        try {
-          const res = await fetch("/api/ingest", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              type: resource.type,
-              url: resource.url,
-              name: resource.name,
-            }),
-          });
+        (async () => {
+          try {
+            const res = await fetch("/api/ingest", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                type: resource.type,
+                url: resource.url,
+                name: resource.name,
+              }),
+            });
 
-          const data = await res.json();
+            const data = await res.json();
 
-          if (!res.ok) {
-            setResources((prev) =>
-              prev.map((r) =>
+            if (!res.ok) {
+              setResources((p) =>
+                p.map((r) =>
+                  r.id === id ? { ...r, status: "error" as const } : r
+                )
+              );
+              return;
+            }
+
+            setResources((p) =>
+              p.map((r) =>
+                r.id === id
+                  ? {
+                      ...r,
+                      status: "ready" as const,
+                      name: data.name ?? r.name,
+                      summary: data.summary,
+                      detectedLibraries: data.detectedLibraries,
+                    }
+                  : r
+              )
+            );
+          } catch {
+            setResources((p) =>
+              p.map((r) =>
                 r.id === id ? { ...r, status: "error" as const } : r
               )
             );
-            return;
           }
+        })();
 
-          setResources((prev) =>
-            prev.map((r) =>
-              r.id === id
-                ? {
-                    ...r,
-                    status: "ready" as const,
-                    name: data.name ?? r.name,
-                    summary: data.summary,
-                    detectedLibraries: data.detectedLibraries,
-                  }
-                : r
-            )
-          );
-        } catch {
-          setResources((prev) =>
-            prev.map((r) =>
-              r.id === id ? { ...r, status: "error" as const } : r
-            )
-          );
-        }
-      })();
+        return [newResource, ...prev];
+      });
     },
     []
   );
@@ -198,7 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           content: data.message,
           timestamp: new Date(),
           codeSnippet: data.aiPowered
-            ? "Powered by OpenAI · grounded in your indexed docs"
+            ? "Powered by Gemini · grounded in your indexed docs"
             : data.codeSnippet,
           suggestions: data.suggestions,
         };
@@ -206,7 +228,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         if (data.action) {
           if (data.action.tab) setActiveTab(data.action.tab);
-          if (data.action.codeBlock) setCodeBlock(data.action.codeBlock);
+          if (data.action.codeBlock) {
+            setCodeBlock(data.action.codeBlock);
+            setSynthesisFingerprint(resourceFingerprint(resources));
+          }
           if (data.action.nodes) setNodes(data.action.nodes);
           if (data.action.edges) setEdges(data.action.edges);
         }
@@ -252,6 +277,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       edges,
       readyCount,
       hasSynthesized,
+      needsResynthesis,
       apiKey,
       setApiKey,
     }),
@@ -270,6 +296,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       edges,
       readyCount,
       hasSynthesized,
+      needsResynthesis,
       apiKey,
     ]
   );

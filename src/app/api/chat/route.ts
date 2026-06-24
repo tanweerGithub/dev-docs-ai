@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server";
 import { handleChatMessage } from "@/lib/chat";
-import { chatWithLlm } from "@/lib/llm";
-import type { CodeBlock, Resource } from "@/types";
+import { askGemini, buildCodeBlockFromGemini } from "@/lib/gemini";
+import type { ChatAction, CodeBlock, Resource } from "@/types";
+
+function mergeActions(
+  ruleAction?: ChatAction,
+  geminiCode?: CodeBlock
+): ChatAction | undefined {
+  if (!ruleAction && !geminiCode) return undefined;
+
+  return {
+    tab: geminiCode ? "playground" : ruleAction?.tab,
+    codeBlock: geminiCode ?? ruleAction?.codeBlock,
+    nodes: ruleAction?.nodes,
+    edges: ruleAction?.edges,
+  };
+}
 
 export async function POST(request: Request) {
   try {
@@ -24,22 +38,29 @@ export async function POST(request: Request) {
       currentCode
     );
 
-    const apiKey = clientKey?.trim() || process.env.OPENAI_API_KEY;
+    const apiKey = clientKey?.trim() || process.env.GEMINI_API_KEY;
     let finalMessage = ruleResponse.message;
     let aiPowered = false;
+    let suggestions = ruleResponse.suggestions;
+    let action = ruleResponse.action;
 
     if (apiKey) {
       try {
-        finalMessage = await chatWithLlm(
+        const gemini = await askGemini(
           apiKey,
           message,
           resources ?? [],
-          currentCode,
-          ruleResponse.action
+          currentCode
         );
+
+        finalMessage = gemini.message;
         aiPowered = true;
+        suggestions = gemini.suggestions ?? suggestions;
+
+        const geminiCode = buildCodeBlockFromGemini(gemini, resources ?? []);
+        action = mergeActions(ruleResponse.action, geminiCode);
       } catch (err) {
-        const errMsg = err instanceof Error ? err.message : "LLM failed";
+        const errMsg = err instanceof Error ? err.message : "Gemini failed";
         if (ruleResponse.action) {
           finalMessage = `${ruleResponse.message}\n\n(AI response unavailable: ${errMsg})`;
         } else {
@@ -47,12 +68,16 @@ export async function POST(request: Request) {
         }
       }
     } else if (!ruleResponse.action) {
-      finalMessage = `${ruleResponse.message}\n\nAdd your OpenAI API key (top-right) to get AI answers grounded in your indexed docs.`;
+      finalMessage = `${ruleResponse.message}\n\nAdd your Gemini API key (top-right) to get AI answers and code grounded in your indexed docs.`;
     }
 
     return NextResponse.json({
-      ...ruleResponse,
       message: finalMessage,
+      suggestions,
+      codeSnippet: aiPowered
+        ? "Powered by Gemini · grounded in your indexed docs"
+        : ruleResponse.codeSnippet,
+      action,
       aiPowered,
     });
   } catch (err) {
