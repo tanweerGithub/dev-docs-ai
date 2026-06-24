@@ -2,38 +2,38 @@
 
 import { BookMarked } from "lucide-react";
 import { AppProvider, useApp } from "@/context/AppContext";
-import { ApiKeySettings } from "@/components/settings/ApiKeySettings";
 import { AgentChat } from "@/components/panels/AgentChat";
 import { ResourcePanel } from "@/components/panels/ResourcePanel";
 import { CenterCanvas } from "@/components/canvas/CenterCanvas";
+import { ApiKeySettings } from "@/components/settings/ApiKeySettings";
 
 function Header() {
-  const { readyCount } = useApp();
+  const { resources } = useApp();
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4">
+    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-950 px-4">
       <div className="flex items-center gap-2">
         <div className="rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 p-1.5">
           <BookMarked className="h-4 w-4 text-white" />
         </div>
-        <h1 className="text-sm font-bold tracking-tight">
+        <h1 className="text-sm font-bold">
           DevDocs <span className="text-blue-400">AI</span>
         </h1>
       </div>
       <span className="hidden text-[10px] text-zinc-600 sm:inline">
-        Multi-Library Agentic Architecture & Code Synthesis
+        Multi-Document Research & Q&A Assistant
       </span>
       <div className="ml-auto flex items-center gap-2">
         <ApiKeySettings />
-        <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-medium text-emerald-400">
-          {readyCount} resource{readyCount === 1 ? "" : "s"} indexed
+        <span className="text-[10px] text-zinc-500">
+          {resources.length} source{resources.length === 1 ? "" : "s"}
         </span>
       </div>
     </header>
   );
 }
 
-function ShellContent() {
+function Shell() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       <Header />
@@ -49,7 +49,7 @@ function ShellContent() {
 export function AppShell() {
   return (
     <AppProvider>
-      <ShellContent />
+      <Shell />
     </AppProvider>
   );
 }

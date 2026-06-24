@@ -13,16 +13,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DevDocs AI — Multi-Library Code Synthesis",
+  title: "DevDocs AI — Multi-Document Research Assistant",
   description:
-    "Ingest API docs, GitHub repos, and PDFs. Synthesize integrations with cited code, architecture diagrams, and agentic debugging.",
+    "Upload documents, preview them, and chat with Gemini for research insights, code, comparisons, and diagrams.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
