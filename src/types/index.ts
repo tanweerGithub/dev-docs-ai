@@ -8,6 +8,8 @@ export interface Resource {
   status: "pending" | "indexing" | "ready" | "error";
   addedAt: Date;
   summary?: string;
+  content?: string;
+  category?: string;
   detectedLibraries?: string[];
 }
 
@@ -16,6 +18,7 @@ export interface ChatAction {
   codeBlock?: CodeBlock;
   nodes?: LibraryNode[];
   edges?: ArchEdge[];
+  comparisons?: DynamicComparison[];
 }
 
 export interface ChatApiResponse {
@@ -56,16 +59,22 @@ export interface CodeBlock {
   citations: DocCitation[];
 }
 
-export interface LibraryComparison {
+export interface ComparisonScorecard {
+  easeOfUse: number;
+  documentation: number;
+  flexibility: number;
+  productionReadiness: number;
+}
+
+export interface DynamicComparison {
   id: string;
+  resourceId: string;
   name: string;
-  version: string;
-  license: string;
-  speed: number;
-  easeOfIntegration: number;
-  pros: string[];
-  cons: string[];
-  docsUrl: string;
+  category: string;
+  docsUrl?: string;
+  scorecard: ComparisonScorecard;
+  codeSnippet: string;
+  codeLanguage: string;
 }
 
 export interface ChatMessage {
@@ -77,4 +86,4 @@ export interface ChatMessage {
   suggestions?: string[];
 }
 
-export type CanvasTab = "arch" | "playground" | "comparison";
+export type CanvasTab = "reader" | "playground" | "comparison" | "arch";

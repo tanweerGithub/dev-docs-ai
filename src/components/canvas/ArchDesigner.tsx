@@ -91,8 +91,8 @@ export function ArchDesigner() {
       <div className="flex h-full flex-col items-center justify-center gap-2 bg-zinc-950 p-8 text-center">
         <p className="text-sm text-zinc-400">No architecture yet</p>
         <p className="max-w-sm text-xs text-zinc-600">
-          Add resources and ask the agent to synthesize an integration or show
-          the architecture diagram.
+          Add multiple resources and ask in chat to visualize how they connect
+          in your stack.
         </p>
       </div>
     );

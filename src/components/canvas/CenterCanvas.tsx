@@ -1,21 +1,23 @@
 "use client";
 
-import { GitCompare, Layers, Terminal } from "lucide-react";
+import { BookOpen, GitCompare, Layers, Terminal } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import type { CanvasTab } from "@/types";
 import { ArchDesigner } from "./ArchDesigner";
 import { ApiComparison } from "./ApiComparison";
+import { DocumentReader } from "./DocumentReader";
 import { NextStepGuide } from "./NextStepGuide";
 import { Playground } from "./Playground";
 
 const TABS: { id: CanvasTab; label: string; icon: typeof Layers }[] = [
-  { id: "arch", label: "Arch Designer", icon: Layers },
+  { id: "reader", label: "Document", icon: BookOpen },
   { id: "playground", label: "Playground", icon: Terminal },
-  { id: "comparison", label: "API Comparison", icon: GitCompare },
+  { id: "comparison", label: "Comparison", icon: GitCompare },
+  { id: "arch", label: "Arch Designer", icon: Layers },
 ];
 
 export function CenterCanvas() {
-  const { activeTab, setActiveTab } = useApp();
+  const { activeTab, setActiveTab, readyCount } = useApp();
 
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-zinc-900">
@@ -32,6 +34,11 @@ export function CenterCanvas() {
           >
             <Icon className="h-3.5 w-3.5" />
             {label}
+            {id === "reader" && readyCount > 0 && (
+              <span className="rounded-full bg-zinc-800 px-1.5 text-[9px] text-zinc-400">
+                {readyCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -39,9 +46,10 @@ export function CenterCanvas() {
       <NextStepGuide />
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === "arch" && <ArchDesigner />}
+        {activeTab === "reader" && <DocumentReader />}
         {activeTab === "playground" && <Playground />}
         {activeTab === "comparison" && <ApiComparison />}
+        {activeTab === "arch" && <ArchDesigner />}
       </div>
     </main>
   );

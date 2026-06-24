@@ -116,27 +116,17 @@ export function handleChatMessage(
   }
 
   if (matchesIntent(message, ["compare", "alternative", "versus", "vs", "which library"])) {
-    if (ready.length === 0) {
+    if (ready.length < 2) {
       return {
-        message:
-          "Add resources first — use the demo stack on the left — then I can compare queue libraries for your stack.",
-        suggestions: ["Synthesize an integration with caching and background tasks"],
-      };
-    }
-
-    if (!libs.includes("celery")) {
-      return {
-        message:
-          "Add Celery documentation (included in the demo stack) so I can compare task-queue alternatives.",
-        suggestions: ["Synthesize an integration with caching and background tasks"],
+        message: "Add at least 2 resources to compare. A generic overview will appear in the Comparison tab.",
+        suggestions: ["Help me set up a Redis Python client"],
       };
     }
 
     return {
-      message:
-        "Opened the API Comparison board for task-queue libraries. Celery is recommended for your current stack; RQ is simpler if you only need Redis.",
+      message: "Generating comparison — add your Gemini key if you haven't.",
       action: { tab: "comparison" },
-      suggestions: ["Synthesize with Celery", "Simulate run"],
+      suggestions: ["Compare MCP setup in ADK vs LangChain"],
     };
   }
 

@@ -15,16 +15,14 @@ import {
   INITIAL_EDGES,
   INITIAL_MESSAGES,
   INITIAL_NODES,
-  SAMPLE_COMPARISONS,
 } from "@/data/sample-data";
 import { getStoredApiKey } from "@/lib/api-key-storage";
-import { detectLibrariesFromResources } from "@/lib/libraries";
 import type {
   ArchEdge,
   CanvasTab,
   ChatMessage,
   CodeBlock,
-  LibraryComparison,
+  DynamicComparison,
   LibraryNode,
   Resource,
 } from "@/types";
@@ -39,14 +37,22 @@ function resourceFingerprint(resources: Resource[]): string {
 
 interface AppContextValue {
   resources: Resource[];
-  addResource: (resource: Omit<Resource, "id" | "addedAt" | "status">) => void;
+  addResource: (
+    resource: Omit<Resource, "id" | "addedAt" | "status">,
+    fileData?: string
+  ) => void;
   removeResource: (id: string) => void;
+  selectedResourceId: string | null;
+  selectResource: (id: string) => void;
   activeTab: CanvasTab;
   setActiveTab: (tab: CanvasTab) => void;
   codeBlock: CodeBlock;
   highlightedCitation: string | null;
   setHighlightedCitation: (id: string | null) => void;
-  comparisons: LibraryComparison[];
+  comparisons: DynamicComparison[];
+  comparisonMeta: { category: string; task: string } | null;
+  isComparisonLoading: boolean;
+  refreshComparison: (goal?: string) => Promise<void>;
   messages: ChatMessage[];
   addMessage: (content: string) => Promise<void>;
   isChatLoading: boolean;
@@ -63,7 +69,10 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [resources, setResources] = useState<Resource[]>([]);
-  const [activeTab, setActiveTab] = useState<CanvasTab>("playground");
+  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(
+    null
+  );
+  const [activeTab, setActiveTab] = useState<CanvasTab>("reader");
   const [codeBlock, setCodeBlock] = useState<CodeBlock>(EMPTY_CODE);
   const [highlightedCitation, setHighlightedCitation] = useState<string | null>(
     null
@@ -71,6 +80,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
   const [nodes, setNodes] = useState<LibraryNode[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<ArchEdge[]>(INITIAL_EDGES);
+  const [comparisons, setComparisons] = useState<DynamicComparison[]>([]);
+  const [comparisonMeta, setComparisonMeta] = useState<{
+    category: string;
+    task: string;
+  } | null>(null);
+  const [isComparisonLoading, setIsComparisonLoading] = useState(false);
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [synthesisFingerprint, setSynthesisFingerprint] = useState<
@@ -78,6 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   >(null);
   const nudgeSentRef = useRef(false);
   const prevReadyCountRef = useRef(0);
+  const comparisonFingerprintRef = useRef<string>("");
 
   useEffect(() => {
     const stored = getStoredApiKey();
@@ -91,6 +107,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
     readyCount > 0 &&
     (!hasSynthesized || currentFingerprint !== synthesisFingerprint);
 
+  const refreshComparison = useCallback(
+    async (goal?: string) => {
+      if (!apiKey || readyCount < 2) return;
+
+      setIsComparisonLoading(true);
+      try {
+        const res = await fetch("/api/compare", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resources, apiKey, goal }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Comparison failed");
+
+        setComparisons(data.items ?? []);
+        setComparisonMeta({
+          category: data.category,
+          task: data.task,
+        });
+        comparisonFingerprintRef.current = currentFingerprint + (goal ?? "");
+      } catch {
+        /* keep previous comparison on error */
+      } finally {
+        setIsComparisonLoading(false);
+      }
+    },
+    [apiKey, readyCount, resources, currentFingerprint]
+  );
+
+  useEffect(() => {
+    if (
+      apiKey &&
+      readyCount >= 2 &&
+      comparisonFingerprintRef.current !== currentFingerprint
+    ) {
+      refreshComparison();
+    }
+  }, [apiKey, readyCount, currentFingerprint, refreshComparison]);
+
   useEffect(() => {
     if (
       readyCount > 0 &&
@@ -103,11 +158,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         {
           id: `msg-nudge-${Date.now()}`,
           role: "assistant",
-          content: `Great — ${readyCount} resource${readyCount === 1 ? "" : "s"} indexed. Add your Gemini API key (top-right), then ask me anything about your docs — e.g. "help me set up a Redis client" or "build a LangChain template for audio input". Code appears in Playground with citations.`,
+          content: `Resources indexed. Click any doc on the left to read it here. With 2+ docs and your Gemini key, a comparison overview generates automatically. Ask me anything — answers cite your docs.`,
           timestamp: new Date(),
           suggestions: [
             "Help me set up a Redis Python client",
-            "Generate code from my indexed documentation",
+            "Compare these for building an agent",
           ],
         },
       ]);
@@ -115,8 +170,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     prevReadyCountRef.current = readyCount;
   }, [readyCount]);
 
+  const selectResource = useCallback((id: string) => {
+    setSelectedResourceId(id);
+    setActiveTab("reader");
+  }, []);
+
   const addResource = useCallback(
-    (resource: Omit<Resource, "id" | "addedAt" | "status">) => {
+    (
+      resource: Omit<Resource, "id" | "addedAt" | "status">,
+      fileData?: string
+    ) => {
       setResources((prev) => {
         if (resource.url && prev.some((r) => r.url === resource.url)) {
           return prev;
@@ -130,6 +193,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           addedAt: new Date(),
         };
 
+        setSelectedResourceId(id);
+        setActiveTab("reader");
+
         (async () => {
           try {
             const res = await fetch("/api/ingest", {
@@ -139,6 +205,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
                 type: resource.type,
                 url: resource.url,
                 name: resource.name,
+                fileData,
               }),
             });
 
@@ -161,11 +228,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
                       status: "ready" as const,
                       name: data.name ?? r.name,
                       summary: data.summary,
+                      content: data.content,
+                      category: data.category,
                       detectedLibraries: data.detectedLibraries,
                     }
                   : r
               )
             );
+            setSelectedResourceId(id);
           } catch {
             setResources((p) =>
               p.map((r) =>
@@ -182,7 +252,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
 
   const removeResource = useCallback((id: string) => {
-    setResources((prev) => prev.filter((r) => r.id !== id));
+    setResources((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      return next;
+    });
+    setSelectedResourceId((cur) => {
+      if (cur !== id) return cur;
+      return null;
+    });
   }, []);
 
   const addMessage = useCallback(
@@ -205,6 +282,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             resources,
             currentCode: codeBlock,
             apiKey,
+            focusResourceId: selectedResourceId,
           }),
         });
 
@@ -234,6 +312,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
           if (data.action.nodes) setNodes(data.action.nodes);
           if (data.action.edges) setEdges(data.action.edges);
+          if (data.action.comparisons) {
+            setComparisons(data.action.comparisons);
+            if (data.comparisonMeta) setComparisonMeta(data.comparisonMeta);
+          }
         }
       } catch (err) {
         const errMsg =
@@ -251,25 +333,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsChatLoading(false);
       }
     },
-    [resources, codeBlock, apiKey]
+    [resources, codeBlock, apiKey, selectedResourceId]
   );
-
-  const comparisons = useMemo(() => {
-    const libs = detectLibrariesFromResources(resources);
-    return libs.includes("celery") ? SAMPLE_COMPARISONS : [];
-  }, [resources]);
 
   const value = useMemo(
     () => ({
       resources,
       addResource,
       removeResource,
+      selectedResourceId,
+      selectResource,
       activeTab,
       setActiveTab,
       codeBlock,
       highlightedCitation,
       setHighlightedCitation,
       comparisons,
+      comparisonMeta,
+      isComparisonLoading,
+      refreshComparison,
       messages,
       addMessage,
       isChatLoading,
@@ -285,10 +367,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       resources,
       addResource,
       removeResource,
+      selectedResourceId,
+      selectResource,
       activeTab,
       codeBlock,
       highlightedCitation,
       comparisons,
+      comparisonMeta,
+      isComparisonLoading,
+      refreshComparison,
       messages,
       addMessage,
       isChatLoading,

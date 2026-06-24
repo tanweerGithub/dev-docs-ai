@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   FileText,
@@ -31,9 +31,11 @@ const STATUS_STYLES = {
 type InputMode = "docs" | "github" | "pdf";
 
 export function ResourcePanel() {
-  const { resources, addResource, removeResource } = useApp();
+  const { resources, addResource, removeResource, selectResource, selectedResourceId } =
+    useApp();
   const [mode, setMode] = useState<InputMode>("docs");
   const [inputValue, setInputValue] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remainingDemoItems = useMemo(() => {
     const addedUrls = new Set(resources.map((r) => r.url).filter(Boolean));
@@ -60,9 +62,13 @@ export function ResourcePanel() {
     setInputValue("");
   };
 
-  const handlePdfUpload = () => {
-    const name = `Document-${Date.now()}.pdf`;
-    addResource({ type: "pdf", name });
+  const handlePdfSelect = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = (reader.result as string).split(",")[1];
+      addResource({ type: "pdf", name: file.name }, base64);
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -72,7 +78,7 @@ export function ResourcePanel() {
           Resource Ingestion
         </h2>
         <p className="mt-1 text-xs text-zinc-500">
-          Upload docs, links, or repos to index
+          Click a resource to read it in the center
         </p>
       </div>
 
@@ -101,14 +107,27 @@ export function ResourcePanel() {
 
       <div className="border-b border-zinc-800 p-3">
         {mode === "pdf" ? (
-          <button
-            onClick={handlePdfUpload}
-            className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-900/50 px-4 py-6 text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-300"
-          >
-            <Upload className="h-6 w-6" />
-            <span className="text-xs font-medium">Drop PDF or click to upload</span>
-            <span className="text-[10px] text-zinc-600">Max 50 MB per file</span>
-          </button>
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handlePdfSelect(file);
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-zinc-700 bg-zinc-900/50 px-4 py-6 text-zinc-400 transition-colors hover:border-zinc-600 hover:bg-zinc-900 hover:text-zinc-300"
+            >
+              <Upload className="h-6 w-6" />
+              <span className="text-xs font-medium">Upload PDF</span>
+              <span className="text-[10px] text-zinc-600">Text extracted for reading & chat</span>
+            </button>
+          </>
         ) : (
           <div className="flex gap-2">
             <input
@@ -161,60 +180,60 @@ export function ResourcePanel() {
         <ul className="space-y-2">
           {resources.map((resource) => {
             const Icon = TYPE_ICONS[resource.type];
+            const isSelected = selectedResourceId === resource.id;
             return (
-              <li
-                key={resource.id}
-                className="group rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 transition-colors hover:border-zinc-700"
-              >
-                <div className="flex items-start gap-2.5">
-                  <div className="mt-0.5 rounded-md bg-zinc-800 p-1.5">
-                    <Icon className="h-3.5 w-3.5 text-zinc-400" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-zinc-200">
-                      {resource.name}
-                    </p>
-                    {resource.url && (
-                      <p className="mt-0.5 truncate text-[10px] text-zinc-600">
-                        {resource.url}
-                      </p>
-                    )}
-                    {resource.summary && resource.status === "ready" && (
-                      <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-zinc-500">
-                        {resource.summary}
-                      </p>
-                    )}
-                    {resource.detectedLibraries &&
-                      resource.detectedLibraries.length > 0 && (
-                        <div className="mt-1.5 flex flex-wrap gap-1">
-                          {resource.detectedLibraries.map((lib) => (
-                            <span
-                              key={lib}
-                              className="rounded bg-zinc-800 px-1.5 py-0.5 text-[9px] capitalize text-zinc-400"
-                            >
-                              {lib}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    <div className="mt-2 flex items-center gap-2">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLES[resource.status]}`}
-                      >
-                        {resource.status === "indexing" && (
-                          <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                        )}
-                        {resource.status}
-                      </span>
+              <li key={resource.id}>
+                <button
+                  onClick={() => selectResource(resource.id)}
+                  className={`group w-full rounded-lg border p-3 text-left transition-colors ${
+                    isSelected
+                      ? "border-blue-500/50 bg-blue-500/5"
+                      : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700"
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 rounded-md bg-zinc-800 p-1.5">
+                      <Icon className="h-3.5 w-3.5 text-zinc-400" />
                     </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-medium text-zinc-200">
+                        {resource.name}
+                      </p>
+                      {resource.category && (
+                        <p className="mt-0.5 text-[10px] capitalize text-violet-400/80">
+                          {resource.category}
+                        </p>
+                      )}
+                      <div className="mt-2 flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_STYLES[resource.status]}`}
+                        >
+                          {resource.status === "indexing" && (
+                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                          )}
+                          {resource.status}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeResource(resource.id);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.stopPropagation();
+                          removeResource(resource.id);
+                        }
+                      }}
+                      className="rounded p-1 text-zinc-600 opacity-0 transition-all hover:bg-zinc-800 hover:text-red-400 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </span>
                   </div>
-                  <button
-                    onClick={() => removeResource(resource.id)}
-                    className="rounded p-1 text-zinc-600 opacity-0 transition-all hover:bg-zinc-800 hover:text-red-400 group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                </button>
               </li>
             );
           })}

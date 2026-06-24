@@ -41,8 +41,8 @@ export function NextStepGuide() {
           </p>
           <p className="mt-1 text-[11px] text-zinc-500">
             {apiKey
-              ? "Ask anything in chat (e.g. “help me build a Redis client”) — code lands in Playground with doc citations."
-              : "Add your Gemini API key for doc-grounded answers, or use the button below for template synthesis."}
+              ? "Ask anything in chat — code lands in Playground, comparisons update dynamically. Click docs on the left to read them here."
+              : "Add your Gemini API key for doc-grounded chat and auto-comparisons."}
           </p>
           <button
             onClick={handleAction}

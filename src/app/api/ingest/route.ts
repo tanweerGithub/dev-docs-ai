@@ -2,15 +2,18 @@ import { NextResponse } from "next/server";
 import { ingestDocs, ingestGithub, ingestPdf } from "@/lib/ingest";
 import type { ResourceType } from "@/types";
 
+export const runtime = "nodejs";
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       type: ResourceType;
       url?: string;
       name?: string;
+      fileData?: string;
     };
 
-    const { type, url, name } = body;
+    const { type, url, name, fileData } = body;
 
     if (type === "github") {
       if (!url) {
@@ -29,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     if (type === "pdf") {
-      const result = ingestPdf(name ?? "uploaded.pdf");
+      const result = await ingestPdf(name ?? "uploaded.pdf", fileData);
       return NextResponse.json(result);
     }
 
