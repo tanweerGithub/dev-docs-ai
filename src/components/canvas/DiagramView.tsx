@@ -19,23 +19,76 @@ import { applyLocalMermaidRepairs } from "@/lib/mermaid-sanitize";
 
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 3;
-const ZOOM_STEP = 0.25;
+const ZOOM_STEP = 0.15;
+const VIEWPORT_PADDING = 40;
+
+function clampZoom(value: number) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+}
+
+function getSvgDimensions(svg: SVGSVGElement): { width: number; height: number } {
+  const viewBox = svg.viewBox?.baseVal;
+  if (viewBox && viewBox.width > 0 && viewBox.height > 0) {
+    return { width: viewBox.width, height: viewBox.height };
+  }
+  const width = parseFloat(svg.getAttribute("width") ?? "0");
+  const height = parseFloat(svg.getAttribute("height") ?? "0");
+  if (width > 0 && height > 0) return { width, height };
+  const rect = svg.getBoundingClientRect();
+  return { width: rect.width || 800, height: rect.height || 600 };
+}
+
+function prepareSvgElement(svg: SVGSVGElement) {
+  svg.style.maxWidth = "none";
+  svg.style.display = "block";
+  const { width, height } = getSvgDimensions(svg);
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+}
 
 export function DiagramView() {
   const { diagram, diagramMeta, apiKey } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const fixAttemptedRef = useRef<string | null>(null);
+  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(
+    null
+  );
+  const svgSizeRef = useRef({ width: 800, height: 600 });
+
   const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
   const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
+
+  const fitToView = useCallback(() => {
+    const svg = containerRef.current?.querySelector("svg") as SVGSVGElement | null;
+    const viewport = viewportRef.current;
+    if (!svg || !viewport) return;
+
+    prepareSvgElement(svg);
+    const { width, height } = getSvgDimensions(svg);
+    svgSizeRef.current = { width, height };
+
+    const zoomW = (viewport.clientWidth - VIEWPORT_PADDING) / width;
+    const zoomH = (viewport.clientHeight - VIEWPORT_PADDING) / height;
+    const fitZoom = clampZoom(Math.min(zoomW, zoomH));
+
+    setZoom(fitZoom);
+    setPan({
+      x: (viewport.clientWidth - width * fitZoom) / 2,
+      y: (viewport.clientHeight - height * fitZoom) / 2,
+    });
+  }, []);
 
   useEffect(() => {
     setActiveDiagram(diagram);
     setZoom(1);
+    setPan({ x: 0, y: 0 });
     fixAttemptedRef.current = null;
   }, [diagram]);
 
@@ -85,6 +138,11 @@ export function DiagramView() {
             );
             if (!cancelled && containerRef.current) {
               containerRef.current.innerHTML = svg;
+              const svgEl = containerRef.current.querySelector("svg");
+              if (svgEl) prepareSvgElement(svgEl as SVGSVGElement);
+              requestAnimationFrame(() => {
+                if (!cancelled) fitToView();
+              });
             }
             lastError = null;
             break;
@@ -147,43 +205,79 @@ export function DiagramView() {
     return () => {
       cancelled = true;
     };
-  }, [activeDiagram, isLight, apiKey, diagramMeta?.query]);
+  }, [activeDiagram, isLight, apiKey, diagramMeta?.query, fitToView]);
 
-  const clampZoom = (value: number) =>
-    Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
+  useEffect(() => {
+    const onResize = () => fitToView();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [fitToView]);
 
-  const fitToView = useCallback(() => {
-    const svg = containerRef.current?.querySelector("svg");
-    const scroll = scrollRef.current;
-    if (!svg || !scroll) return;
+  useEffect(() => {
+    if (!isDragging) return;
 
-    const viewBox = svg.viewBox?.baseVal;
-    const svgW =
-      viewBox?.width ||
-      parseFloat(svg.getAttribute("width") ?? "0") ||
-      svg.getBoundingClientRect().width ||
-      800;
-    const svgH =
-      viewBox?.height ||
-      parseFloat(svg.getAttribute("height") ?? "0") ||
-      svg.getBoundingClientRect().height ||
-      600;
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      setPan({
+        x: dragRef.current.panX + (e.clientX - dragRef.current.x),
+        y: dragRef.current.panY + (e.clientY - dragRef.current.y),
+      });
+    };
 
-    const padding = 48;
-    const zoomW = (scroll.clientWidth - padding) / svgW;
-    const zoomH = (scroll.clientHeight - padding) / svgH;
-    setZoom(clampZoom(Math.min(zoomW, zoomH, 1)));
-  }, []);
+    const onUp = () => {
+      dragRef.current = null;
+      setIsDragging(false);
+    };
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey) return;
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isDragging]);
+
+  const handlePanStart = (e: React.MouseEvent) => {
+    if (e.button !== 0 || renderError || fixing) return;
     e.preventDefault();
-    setZoom((z) =>
-      clampZoom(z + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP))
-    );
-  }, []);
+    dragRef.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    setIsDragging(true);
+  };
 
-  const getSvg = () => containerRef.current?.querySelector("svg") ?? null;
+  const zoomAtCenter = useCallback(
+    (delta: number) => {
+      const viewport = viewportRef.current;
+      if (!viewport) {
+        setZoom((z) => clampZoom(z + delta));
+        return;
+      }
+
+      const cx = viewport.clientWidth / 2;
+      const cy = viewport.clientHeight / 2;
+      setZoom((prevZoom) => {
+        const nextZoom = clampZoom(prevZoom + delta);
+        if (nextZoom === prevZoom) return prevZoom;
+        const scale = nextZoom / prevZoom;
+        setPan((prevPan) => ({
+          x: cx - (cx - prevPan.x) * scale,
+          y: cy - (cy - prevPan.y) * scale,
+        }));
+        return nextZoom;
+      });
+    },
+    []
+  );
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      zoomAtCenter(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+    },
+    [zoomAtCenter]
+  );
+
+  const getSvg = () =>
+    containerRef.current?.querySelector("svg") as SVGSVGElement | null;
 
   const handleExportPng = async () => {
     const svg = getSvg();
@@ -231,13 +325,15 @@ export function DiagramView() {
       <ArtifactBanner meta={diagramMeta} />
       <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-2">
         <span className="text-xs text-zinc-500">
-          {fixing ? "Repairing diagram…" : "Research diagram"}
+          {fixing
+            ? "Repairing diagram…"
+            : "Drag to pan · scroll to zoom"}
         </span>
         {!renderError && !fixing && (
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
+              onClick={() => zoomAtCenter(-ZOOM_STEP)}
               className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
               title="Zoom out"
               aria-label="Zoom out"
@@ -249,7 +345,7 @@ export function DiagramView() {
             </span>
             <button
               type="button"
-              onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
+              onClick={() => zoomAtCenter(ZOOM_STEP)}
               className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
               title="Zoom in"
               aria-label="Zoom in"
@@ -304,21 +400,23 @@ export function DiagramView() {
         </div>
       ) : (
         <div
-          ref={scrollRef}
+          ref={viewportRef}
           onWheel={handleWheel}
-          className="flex-1 overflow-auto"
-          title="Ctrl + scroll to zoom"
+          onMouseDown={handlePanStart}
+          className={`relative flex-1 overflow-hidden bg-zinc-950/30 ${
+            isDragging ? "cursor-grabbing" : "cursor-grab"
+          }`}
         >
           <div
-            className="inline-block p-8"
+            className="absolute left-0 top-0 will-change-transform"
             style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: "top left",
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transformOrigin: "0 0",
             }}
           >
             <div
               ref={containerRef}
-              className="[&_svg]:block [&_svg]:h-auto [&_svg]:max-w-none"
+              className="[&_svg]:block [&_svg]:max-w-none"
             />
           </div>
         </div>
