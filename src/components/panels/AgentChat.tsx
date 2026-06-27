@@ -209,9 +209,7 @@ export function AgentChat() {
     setMentionOpen(false);
     setStartersOpen(false);
     const ids = scopedIds ?? undefined;
-    setScopedIds(null);
     await addMessage(trimmed, ids);
-    setTimeout(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
   const stopListening = useCallback(() => {
@@ -289,6 +287,12 @@ export function AgentChat() {
   useEffect(() => {
     resizeInput();
   }, [input, resizeInput]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+  }, [messages.length, isLoading]);
 
   useEffect(() => {
     return () => recognitionRef.current?.stop();

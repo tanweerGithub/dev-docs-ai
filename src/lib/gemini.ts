@@ -22,7 +22,7 @@ const NOT_FOUND_OPENING =
   "**Not found in your sources.**";
 
 function asksForCode(message: string): boolean {
-  return /\b(code|snippet|example|implement|sample|multi-?agent)\b/i.test(
+  return /\b(code|snippet|example|implement|sample|multi-?agent|prompt)\b/i.test(
     message
   );
 }
@@ -30,7 +30,8 @@ function asksForCode(message: string): boolean {
 function buildPrompt(
   message: string,
   resources: Resource[],
-  webSearchEnabled: boolean
+  webSearchEnabled: boolean,
+  scope: "active" | "all" = "all"
 ): string {
   const docList = resources
     .map((r, i) => {
@@ -42,15 +43,24 @@ function buildPrompt(
     .join("\n");
 
   const codeRequest = asksForCode(message);
+  const scopedSingle = scope === "active" && resources.length === 1;
+  const scopedNote = scopedSingle
+    ? `\nScoped query (@): the user limited this question to ONE source. Use url_context to read that URL in full. ${
+        webSearchEnabled
+          ? "If the page lacks the answer, use google_search for official docs on the same library — prefer the same domain when possible."
+          : "Answer only from that source; do not use general knowledge."
+      }\n`
+    : "";
 
   return `You are DevDocs AI — a multi-document research assistant for technical documentation.
 
 The user's sources (cite by sourceIndex):
 ${docList || "No documents yet."}
-
+${scopedNote}
 User question: ${message}
 
 You MUST respond with a single valid JSON object (no markdown fences outside JSON). Never return an empty response.
+Even when using url_context or google_search tools, your final message must be ONLY that JSON object.
 
 {
   "answer": "markdown string",
@@ -70,17 +80,21 @@ ${
 4. Then tell the user to turn on **Web search** near the chat box and ask again, or add documentation that contains the code.
 5. Set code, comparison, diagram to null. Do not fabricate code from general knowledge.
 6. If sources have zero relevant content, only output the not-found block + next-step guidance (under 80 words total).`
-    : `1. Check user sources first. If they contain the answer, use them and cite [1], [2], etc.
-2. If user sources lack code or detail, use google_search and cite source: "web".
+    : `1. Use url_context to read linked documentation, then google_search if needed.
+2. If user sources or web contain the answer, cite [1] for documents or source "web" for search results.
 3. If user asked for code and you find it (sources or web), set code + suggestedTab "playground".
-4. If nothing useful after sources + web, begin answer with: **Could not find a reliable answer.** Then explain briefly and suggest adding a more specific doc link.`
+4. Only if sources AND web lack the answer, begin with: **Could not find a reliable answer.** — never use "${NOT_FOUND_OPENING}" when web search is enabled.`
 }
 ${
   codeRequest
     ? `
 Code request rules:
 - Only include "code" if you have a concrete runnable example from user sources${webSearchEnabled ? " or vetted web results" : ""}.
-- Never bury "no code in documents" at the end — if missing, lead with ${NOT_FOUND_OPENING}
+${
+  webSearchEnabled
+    ? "- Search the linked docs and web for runnable examples before saying code is unavailable."
+    : `- Never bury "no code in documents" at the end — if missing, lead with ${NOT_FOUND_OPENING}`
+}
 - Do not pad with conceptual paragraphs when code was requested but is absent.`
     : ""
 }
@@ -100,13 +114,50 @@ Other rules:
 - Diagrams: flowchart TD, valid mermaid, suggestedTab "diagram".`;
 }
 
-function parseJson<T>(text: string): T {
+function extractJsonFromText(text: string): string | null {
   const cleaned = text
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  return JSON.parse(cleaned) as T;
+
+  try {
+    JSON.parse(cleaned);
+    return cleaned;
+  } catch {
+    const start = cleaned.indexOf("{");
+    if (start === -1) return null;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+
+    for (let i = start; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      if (inString) {
+        if (escape) escape = false;
+        else if (ch === "\\") escape = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === "{") depth++;
+      if (ch === "}") {
+        depth--;
+        if (depth === 0) return cleaned.slice(start, i + 1);
+      }
+    }
+    return null;
+  }
+}
+
+function parseJson<T>(text: string): T {
+  const json = extractJsonFromText(text);
+  if (!json) throw new Error("No JSON object in response");
+  return JSON.parse(json) as T;
 }
 
 interface ParsedResearchResponse {
@@ -153,7 +204,7 @@ function emptyResponseMessage(
     return `Gemini stopped early (${finish}). Try a shorter or more specific question.`;
   }
   if (webSearchEnabled) {
-    return `${NOT_FOUND_OPENING}\n\nI couldn't complete a web search for this request. Try scoping to one source with @, or rephrase (e.g. "show ADK multi-agent code from my linked doc").`;
+    return `**Could not complete this request.**\n\nGemini returned no usable text. Try rephrasing your question, scoping to one source with @, or asking again in a moment.`;
   }
   return `${NOT_FOUND_OPENING}\n\nYour current sources don't contain enough on this topic. Turn on **Web search** above the chat box and ask again, or add documentation that covers it.`;
 }
@@ -163,6 +214,18 @@ function fallbackResponse(
   webSearchEnabled: boolean
 ): ResearchResponse {
   const code = asksForCode(message);
+
+  if (webSearchEnabled) {
+    return {
+      answer: `**Could not find a reliable answer.**\n\nWeb search and your sources did not return a usable result for this question. Try rephrasing (e.g. name the library explicitly: "LangChain multimodal prompt with image and audio"), or add a doc link that covers this topic.`,
+      citations: [],
+      code: null,
+      comparison: null,
+      diagram: null,
+      suggestedTab: null,
+    };
+  }
+
   const hint = code
     ? "Add a doc link that includes code examples, or enable **Web search** and ask again."
     : "Add more relevant documentation, or enable **Web search** and ask again.";
@@ -175,6 +238,48 @@ function fallbackResponse(
     diagram: null,
     suggestedTab: null,
   };
+}
+
+async function structureAsJson(
+  apiKey: string,
+  rawText: string,
+  message: string,
+  resources: Resource[],
+  webSearchEnabled: boolean
+): Promise<ParsedResearchResponse | null> {
+  const prompt = `Format this research into a single JSON object. User question: ${message}
+
+Research output:
+${rawText.slice(0, 14000)}
+
+Return ONLY JSON:
+{
+  "answer": "markdown string",
+  "citations": [{ "sourceIndex": 1, "label": "...", "excerpt": "...", "url": null, "page": null, "source": "document" }],
+  "code": { "language": "python", "code": "..." } or null,
+  "comparison": null,
+  "diagram": null,
+  "suggestedTab": null
+}
+
+User has ${resources.length} source(s). ${
+    webSearchEnabled
+      ? 'Web citations use source "web" with https url.'
+      : "No web citations."
+  }`;
+
+  const data = await callGemini(
+    apiKey,
+    buildRequestBody([{ text: prompt }], [], true)
+  );
+  const text = extractResponseText(data);
+  if (!text) return null;
+
+  try {
+    return parseJson<ParsedResearchResponse>(text);
+  } catch {
+    return null;
+  }
 }
 
 async function callGemini(
@@ -223,10 +328,11 @@ export async function researchWithGemini(
   apiKey: string,
   message: string,
   resources: Resource[],
-  webSearchEnabled = false
+  webSearchEnabled = false,
+  scope: "active" | "all" = "all"
 ): Promise<ResearchResponse> {
   const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [
-    { text: buildPrompt(message, resources, webSearchEnabled) },
+    { text: buildPrompt(message, resources, webSearchEnabled, scope) },
   ];
 
   for (const r of resources) {
@@ -254,15 +360,18 @@ export async function researchWithGemini(
   let text = extractResponseText(data);
 
   if (!text && fullTools.length > 0) {
-    const retryTools = urlTool.length > 0 ? urlTool : [];
+    const retryTools: Record<string, Record<string, never>>[] = [
+      ...urlTool,
+      ...(webSearchEnabled ? [{ google_search: {} }] : []),
+    ];
     data = await callGemini(
       apiKey,
-      buildRequestBody(parts, retryTools, retryTools.length === 0)
+      buildRequestBody(parts, retryTools, false)
     );
     text = extractResponseText(data);
   }
 
-  if (!text) {
+  if (!text && !webSearchEnabled) {
     data = await callGemini(apiKey, buildRequestBody(parts, [], true));
     text = extractResponseText(data);
   }
@@ -282,7 +391,18 @@ export async function researchWithGemini(
   try {
     parsed = parseJson<ParsedResearchResponse>(text);
   } catch {
-    return fallbackResponse(message, webSearchEnabled);
+    const structured = await structureAsJson(
+      apiKey,
+      text,
+      message,
+      resources,
+      webSearchEnabled
+    );
+    if (structured?.answer?.trim()) {
+      parsed = structured;
+    } else {
+      return fallbackResponse(message, webSearchEnabled);
+    }
   }
 
   if (!parsed.answer?.trim()) {

@@ -9,9 +9,11 @@ export async function POST(request: Request) {
       resources: Resource[];
       apiKey?: string;
       webSearchEnabled?: boolean;
+      scope?: "active" | "all";
     };
 
-    const { message, resources, apiKey: clientKey, webSearchEnabled } = body;
+    const { message, resources, apiKey: clientKey, webSearchEnabled, scope } =
+      body;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "Message required" }, { status: 400 });
@@ -29,7 +31,8 @@ export async function POST(request: Request) {
       apiKey,
       message,
       resources ?? [],
-      webSearchEnabled === true
+      webSearchEnabled === true,
+      scope === "active" ? "active" : "all"
     );
 
     return NextResponse.json(result);
