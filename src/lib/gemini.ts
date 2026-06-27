@@ -85,15 +85,16 @@ Answer structure (critical — follow order):
 ${
   !webSearchEnabled
     ? `1. DOCUMENT-ONLY MODE — check sources FIRST before writing anything else.
-2. If the user asks for code/examples and the sources lack runnable code for that topic, your answer MUST begin with exactly: ${NOT_FOUND_OPENING}
-3. After that line, at most 2 short sentences (optional) summarizing what sources do mention — no long essays.
-4. Then tell the user to turn on **Web search** near the chat box and ask again, or add documentation that contains the code.
-5. Set code, comparison, diagram to null. Do not fabricate code from general knowledge.
-6. If sources have zero relevant content, only output the not-found block + next-step guidance (under 80 words total).`
+2. CODE FROM DOCUMENTED API: If sources describe the API (classes, methods, content block types) but lack one combined runnable example, you MAY write a minimal runnable example using ONLY APIs shown in the sources. Cite [1], set code + suggestedTab "playground". Do NOT use ${NOT_FOUND_OPENING} when the docs give enough API detail to construct the example.
+3. If the user asks for code and sources lack both runnable examples AND enough API detail, your answer MUST begin with exactly: ${NOT_FOUND_OPENING}
+4. After a not-found line, at most 2 short sentences summarizing what sources do mention.
+5. Then tell the user to turn on **Web search** near the chat box and ask again, or add documentation with the code.
+6. Do not invent APIs not present in the sources.`
     : `1. Use url_context to read linked documentation, then google_search if needed.
-2. If user sources or web contain the answer, cite [1] for documents or source "web" for search results.
-3. If user asked for code and you find it (sources or web), set code + suggestedTab "playground".
-4. Only if sources AND web lack the answer, begin with: **Could not find a reliable answer.** — never use "${NOT_FOUND_OPENING}" when web search is enabled.`
+2. Cite user sources with sourceIndex [1], [2]. For EVERY web page used via google_search, add a separate citation with source "web", a short page title as label, and the full https url (never null url).
+3. If code or key facts came from the web, you MUST include web citations — do not list only the user's document when web sources were used.
+4. If user asked for code and you find it (sources or web), set code + suggestedTab "playground".
+5. Only if sources AND web lack the answer, begin with: **Could not find a reliable answer.** — never use "${NOT_FOUND_OPENING}" when web search is enabled.`
 }
 ${
   codeRequest
@@ -114,7 +115,7 @@ Citation rules:
 - PDFs: use page in citations and [1 p.12] inline when known.
 ${
   webSearchEnabled
-    ? "- Web citations: source \"web\" with https url. User sources take priority."
+    ? "- Web citations: source \"web\" with https url (required when google_search was used). Include BOTH document and web citations when both were used."
     : "- No web citations. No Medium, blogs, or URLs outside the source list."
 }
 
@@ -257,12 +258,65 @@ function normalizeParsedResponse(
   };
 }
 
+interface GeminiGroundingChunk {
+  web?: { uri?: string; title?: string };
+}
+
 interface GeminiApiResponse {
   candidates?: {
     content?: { parts?: { text?: string }[] };
     finishReason?: string;
+    groundingMetadata?: {
+      groundingChunks?: GeminiGroundingChunk[];
+      webSearchQueries?: string[];
+    };
   }[];
   promptFeedback?: { blockReason?: string };
+}
+
+function extractGroundingCitations(data: GeminiApiResponse): ChatCitation[] {
+  const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks;
+  if (!chunks?.length) return [];
+
+  const seen = new Set<string>();
+  const citations: ChatCitation[] = [];
+
+  for (const chunk of chunks) {
+    const uri = chunk.web?.uri?.trim();
+    if (!uri || seen.has(uri)) continue;
+    seen.add(uri);
+
+    let label = chunk.web?.title?.trim();
+    if (!label) {
+      try {
+        label = new URL(uri).hostname;
+      } catch {
+        label = uri;
+      }
+    }
+
+    citations.push({ label, url: uri, source: "web" });
+  }
+
+  return citations;
+}
+
+function mergeCitations(
+  primary: ChatCitation[],
+  extra: ChatCitation[]
+): ChatCitation[] {
+  const merged = [...primary];
+  for (const citation of extra) {
+    const duplicate = merged.some(
+      (c) =>
+        (c.url && citation.url && c.url === citation.url) ||
+        (c.source === "web" &&
+          citation.source === "web" &&
+          c.label === citation.label)
+    );
+    if (!duplicate) merged.push(citation);
+  }
+  return merged;
 }
 
 function extractResponseText(data: GeminiApiResponse): string | null {
@@ -441,32 +495,32 @@ export async function researchWithGemini(
     ...(webSearchEnabled ? [{ google_search: {} }] : []),
   ];
 
-  let data = await callGemini(
+  let responseData = await callGemini(
     apiKey,
     buildRequestBody(parts, fullTools, fullTools.length === 0)
   );
-  let text = extractResponseText(data);
+  let text = extractResponseText(responseData);
 
   if (!text && fullTools.length > 0) {
     const retryTools: Record<string, Record<string, never>>[] = [
       ...urlTool,
       ...(webSearchEnabled ? [{ google_search: {} }] : []),
     ];
-    data = await callGemini(
+    responseData = await callGemini(
       apiKey,
       buildRequestBody(parts, retryTools, false)
     );
-    text = extractResponseText(data);
+    text = extractResponseText(responseData);
   }
 
   if (!text && !webSearchEnabled) {
-    data = await callGemini(apiKey, buildRequestBody(parts, [], true));
-    text = extractResponseText(data);
+    responseData = await callGemini(apiKey, buildRequestBody(parts, [], true));
+    text = extractResponseText(responseData);
   }
 
   if (!text) {
     return {
-      answer: emptyResponseMessage(data, webSearchEnabled),
+      answer: emptyResponseMessage(responseData, webSearchEnabled),
       citations: [],
       code: null,
       comparison: null,
@@ -500,7 +554,12 @@ export async function researchWithGemini(
   }
 
   let citations: ChatCitation[] = enrichCitations(parsed.citations, resources);
-  if (!webSearchEnabled) {
+  if (webSearchEnabled) {
+    citations = mergeCitations(
+      citations,
+      extractGroundingCitations(responseData)
+    );
+  } else {
     citations = citations.filter((c) => c.source !== "web");
   }
 

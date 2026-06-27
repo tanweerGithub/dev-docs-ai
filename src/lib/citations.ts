@@ -70,7 +70,17 @@ export function enrichCitations(
     const resource =
       byIndex ?? matchResource(label, citationUrl, resources);
 
-    const isWeb = item.source === "web" && !resource;
+    const urlMatchesUserSource =
+      !!citationUrl &&
+      resources.some(
+        (r) =>
+          r.url === citationUrl ||
+          (r.url && citationUrl.startsWith(r.url.replace(/\/$/, "")))
+      );
+
+    const isWeb =
+      item.source === "web" ||
+      (!!citationUrl && !byIndex && !urlMatchesUserSource && !resource);
 
     const page =
       typeof item.page === "number" && item.page > 0 ? item.page : undefined;

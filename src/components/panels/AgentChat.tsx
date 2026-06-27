@@ -35,6 +35,62 @@ function resourceIcon(r: Resource) {
   return r.type === "url" ? Globe : FileText;
 }
 
+function CitationItem({
+  c,
+  i,
+  onOpenDocument,
+}: {
+  c: ChatCitation;
+  i: number;
+  onOpenDocument: (resourceId: string) => void;
+}) {
+  const text = (
+    <>
+      <span className="font-medium">{c.label}</span>
+      {c.page && <span className="text-zinc-500"> · p.{c.page}</span>}
+      {c.excerpt && (
+        <span className="text-zinc-500"> — {c.excerpt}</span>
+      )}
+      {c.source === "web" && (
+        <span className="ml-1 text-zinc-600">(web)</span>
+      )}
+    </>
+  );
+
+  if (c.resourceId) {
+    return (
+      <button
+        key={`${c.label}-${i}`}
+        type="button"
+        onClick={() => onOpenDocument(c.resourceId!)}
+        className="block w-full cursor-pointer text-left text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
+      >
+        {text}
+      </button>
+    );
+  }
+
+  if (c.url) {
+    return (
+      <a
+        key={`${c.label}-${i}`}
+        href={c.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
+      >
+        {text}
+      </a>
+    );
+  }
+
+  return (
+    <p key={`${c.label}-${i}`} className="text-xs text-emerald-400/80">
+      {text}
+    </p>
+  );
+}
+
 function CitationLinks({
   citations,
   onOpenDocument,
@@ -42,58 +98,40 @@ function CitationLinks({
   citations: ChatCitation[];
   onOpenDocument: (resourceId: string) => void;
 }) {
+  const docCitations = citations.filter((c) => c.source !== "web");
+  const webCitations = citations.filter((c) => c.source === "web");
+
   return (
-    <div className="mt-2 space-y-1.5 border-t border-zinc-800 pt-2">
-      <p className="text-xs font-medium text-zinc-500">References</p>
-      {citations.map((c, i) => {
-        const text = (
-          <>
-            <span className="font-medium">{c.label}</span>
-            {c.page && (
-              <span className="text-zinc-500"> · p.{c.page}</span>
-            )}
-            {c.excerpt && (
-              <span className="text-zinc-500"> — {c.excerpt}</span>
-            )}
-            {c.source === "web" && (
-              <span className="ml-1 text-zinc-600">(web)</span>
-            )}
-          </>
-        );
-
-        if (c.resourceId) {
-          return (
-            <button
-              key={`${c.label}-${i}`}
-              type="button"
-              onClick={() => onOpenDocument(c.resourceId!)}
-              className="block w-full cursor-pointer text-left text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
-            >
-              {text}
-            </button>
-          );
-        }
-
-        if (c.url) {
-          return (
-            <a
-              key={`${c.label}-${i}`}
-              href={c.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
-            >
-              {text}
-            </a>
-          );
-        }
-
-        return (
-          <p key={`${c.label}-${i}`} className="text-xs text-emerald-400/80">
-            {text}
-          </p>
-        );
-      })}
+    <div className="mt-2 space-y-2 border-t border-zinc-800 pt-2">
+      {docCitations.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-zinc-500">Your sources</p>
+          {docCitations.map((c, i) => (
+            <CitationItem
+              key={`doc-${c.label}-${i}`}
+              c={c}
+              i={i}
+              onOpenDocument={onOpenDocument}
+            />
+          ))}
+        </div>
+      )}
+      {webCitations.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-zinc-500">Web</p>
+          {webCitations.map((c, i) => (
+            <CitationItem
+              key={`web-${c.label}-${i}`}
+              c={c}
+              i={i}
+              onOpenDocument={onOpenDocument}
+            />
+          ))}
+        </div>
+      )}
+      {docCitations.length === 0 && webCitations.length === 0 && (
+        <p className="text-xs font-medium text-zinc-500">References</p>
+      )}
     </div>
   );
 }
