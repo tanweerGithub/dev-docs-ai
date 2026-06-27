@@ -104,11 +104,68 @@ export function repairMermaidSyntax(diagram: string): string {
   return text;
 }
 
+function isFlowchartDiagram(diagram: string): boolean {
+  return /^(graph|flowchart)\s/im.test(diagram.trim());
+}
+
+/** Class-diagram arrows (<|--) are invalid inside flowchart/graph blocks. */
+export function convertClassArrowsToFlowchart(diagram: string): string {
+  if (!isFlowchartDiagram(diagram) || !/<\|--/.test(diagram)) return diagram;
+
+  return diagram.replace(
+    /^(\s*)(.+?)\s*<\|--\s*(\S+)\s*$/gm,
+    (_match, indent: string, parent: string, child: string) =>
+      `${indent}${parent.trim()} --> ${child}`
+  );
+}
+
+export function normalizeFlowchartHeader(diagram: string): string {
+  return diagram.replace(/^graph\s+/im, "flowchart ");
+}
+
+/** Heuristic validation before attempting mermaid.render. */
+export function detectMermaidIssues(diagram: string): string[] {
+  const issues: string[] = [];
+  const trimmed = diagram.trim();
+
+  if (!trimmed) {
+    issues.push("Diagram is empty.");
+    return issues;
+  }
+
+  if (!MERMAID_START.test(trimmed)) {
+    issues.push("Missing a valid mermaid diagram header (e.g. flowchart TD).");
+  }
+
+  if (isFlowchartDiagram(trimmed) && /<\|--/.test(trimmed)) {
+    issues.push(
+      "Class-diagram inheritance syntax (<|--) cannot be used inside flowchart/graph. Use --> arrows or a separate classDiagram."
+    );
+  }
+
+  if (/\[[^\]"]*\([^)\]"]+\)[^\]]*\]/.test(trimmed)) {
+    issues.push('Unquoted parentheses in node labels — use ["Label (text)"].');
+  }
+
+  if (/^subgraph\s+[^"\n\[\]]+\s+[^"\n\[\]]/m.test(trimmed)) {
+    issues.push("Subgraph titles with spaces must be quoted.");
+  }
+
+  return issues;
+}
+
+/** Full local repair pass (no AI). */
+export function applyLocalMermaidRepairs(diagram: string): string {
+  return repairMermaidSyntax(
+    convertClassArrowsToFlowchart(normalizeFlowchartHeader(diagram))
+  );
+}
+
 /** Strip markdown fences and repair common syntax issues. */
 export function sanitizeMermaidDiagram(raw: unknown): string | null {
   const rawText = coerceToString(raw);
   if (!rawText?.trim()) return null;
 
-  const repaired = repairMermaidSyntax(rawText.trim());
+  const repaired = applyLocalMermaidRepairs(rawText.trim());
   return repaired || null;
 }

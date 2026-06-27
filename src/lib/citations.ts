@@ -98,13 +98,34 @@ export function enrichCitations(
   });
 }
 
+export function dedupeCitations(citations: ChatCitation[]): ChatCitation[] {
+  const seen = new Set<string>();
+  const result: ChatCitation[] = [];
+
+  for (const citation of citations) {
+    const key = citation.resourceId
+      ? `doc:${citation.resourceId}`
+      : citation.url
+        ? `url:${citation.url}`
+        : `label:${citation.source}:${citation.label}`;
+
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(citation);
+  }
+
+  return result;
+}
+
 export function normalizeMessageCitations(
   citations: ChatCitation[] | string[] | undefined,
   resources: Resource[]
 ): ChatCitation[] {
   if (!citations?.length) return [];
   if (typeof citations[0] === "string") {
-    return enrichCitations(citations as string[], resources);
+    return dedupeCitations(
+      enrichCitations(citations as string[], resources)
+    );
   }
-  return citations as ChatCitation[];
+  return dedupeCitations(citations as ChatCitation[]);
 }

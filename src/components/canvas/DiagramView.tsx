@@ -13,28 +13,34 @@ import {
 import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
 import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
+import { getStoredApiKey } from "@/lib/api-key-storage";
 import { exportDiagramPdf, exportDiagramPng } from "@/lib/diagram-export";
-import { repairMermaidSyntax } from "@/lib/mermaid-sanitize";
+import { applyLocalMermaidRepairs } from "@/lib/mermaid-sanitize";
 
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
 
 export function DiagramView() {
-  const { diagram, diagramMeta } = useApp();
+  const { diagram, diagramMeta, apiKey } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fixAttemptedRef = useRef<string | null>(null);
+  const [activeDiagram, setActiveDiagram] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [exporting, setExporting] = useState<"png" | "pdf" | null>(null);
 
   useEffect(() => {
+    setActiveDiagram(diagram);
     setZoom(1);
+    fixAttemptedRef.current = null;
   }, [diagram]);
 
   useEffect(() => {
-    if (!diagram || !containerRef.current) return;
+    if (!activeDiagram || !containerRef.current) return;
 
     let cancelled = false;
     setRenderError(null);
@@ -65,7 +71,10 @@ export function DiagramView() {
         if (cancelled || !containerRef.current) return;
 
         const id = `mmd-${Date.now()}`;
-        const sources = [diagram, repairMermaidSyntax(diagram)];
+        const repaired = applyLocalMermaidRepairs(activeDiagram);
+        const sources = Array.from(
+          new Set([activeDiagram, repaired].filter(Boolean))
+        );
         let lastError: unknown = null;
 
         for (const source of sources) {
@@ -85,11 +94,46 @@ export function DiagramView() {
         }
 
         if (lastError && !cancelled) {
-          setRenderError(
+          const errorMessage =
             lastError instanceof Error
               ? lastError.message
-              : "Failed to render diagram"
-          );
+              : "Failed to render diagram";
+          const fixKey = activeDiagram.slice(0, 120);
+          const effectiveKey = (apiKey ?? getStoredApiKey())?.trim();
+
+          if (
+            effectiveKey &&
+            fixAttemptedRef.current !== fixKey &&
+            !cancelled
+          ) {
+            fixAttemptedRef.current = fixKey;
+            setFixing(true);
+            try {
+              const res = await fetch("/api/diagram-fix", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  diagram: activeDiagram,
+                  message:
+                    diagramMeta?.query ?? "Fix mermaid architecture diagram",
+                  parseError: errorMessage,
+                  apiKey: effectiveKey,
+                }),
+              });
+              const data = (await res.json()) as {
+                diagram?: string;
+                error?: string;
+              };
+              if (data.diagram && !cancelled) {
+                setActiveDiagram(data.diagram);
+                return;
+              }
+            } finally {
+              if (!cancelled) setFixing(false);
+            }
+          }
+
+          setRenderError(errorMessage);
         }
       } catch (err) {
         if (!cancelled) {
@@ -103,7 +147,7 @@ export function DiagramView() {
     return () => {
       cancelled = true;
     };
-  }, [diagram, isLight]);
+  }, [activeDiagram, isLight, apiKey, diagramMeta?.query]);
 
   const clampZoom = (value: number) =>
     Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, value));
@@ -169,7 +213,7 @@ export function DiagramView() {
     }
   };
 
-  if (!diagram) {
+  if (!diagram && !activeDiagram) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <Network className="h-10 w-10 text-zinc-700" />
@@ -186,8 +230,10 @@ export function DiagramView() {
     <div className="flex h-full flex-col overflow-hidden">
       <ArtifactBanner meta={diagramMeta} />
       <div className="flex items-center justify-between gap-2 border-b border-zinc-800 px-4 py-2">
-        <span className="text-xs text-zinc-500">Research diagram</span>
-        {!renderError && (
+        <span className="text-xs text-zinc-500">
+          {fixing ? "Repairing diagram…" : "Research diagram"}
+        </span>
+        {!renderError && !fixing && (
           <div className="flex items-center gap-1">
             <button
               type="button"
@@ -249,8 +295,12 @@ export function DiagramView() {
           <p className="text-sm text-zinc-400">Could not render this diagram</p>
           <p className="max-w-md text-xs text-zinc-600">{renderError}</p>
           <pre className="max-h-40 max-w-full overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-left font-mono text-[10px] text-zinc-500">
-            {diagram}
+            {activeDiagram ?? diagram}
           </pre>
+        </div>
+      ) : fixing ? (
+        <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+          Validating and repairing diagram syntax…
         </div>
       ) : (
         <div

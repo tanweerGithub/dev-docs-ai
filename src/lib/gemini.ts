@@ -1,5 +1,7 @@
-import { enrichCitations, type RawCitation } from "@/lib/citations";
+import { dedupeCitations, enrichCitations, type RawCitation } from "@/lib/citations";
 import {
+  applyLocalMermaidRepairs,
+  detectMermaidIssues,
   extractMermaidFromMarkdown,
   sanitizeMermaidDiagram,
 } from "@/lib/mermaid-sanitize";
@@ -111,6 +113,7 @@ ${
 }
 
 Citation rules:
+- List each source AT MOST ONCE in the citations array. Repeat inline [1] in the answer as needed — do not duplicate the same sourceIndex many times.
 - sourceIndex must match [1], [2] in the source list. No invented indices.
 - PDFs: use page in citations and [1 p.12] inline when known.
 ${
@@ -124,8 +127,8 @@ Other rules:
 - Comparison: LangChain first, ADK second, suggestedTab "comparison", code null.
 ${
   diagramRequest
-    ? `- DIAGRAM REQUEST: put the full mermaid source in the "diagram" field (raw mermaid, no fences). Use flowchart TD or graph LR. Quote labels with special characters: D["Model (LLM)"], not D[Model (LLM)]. Set suggestedTab "diagram", code null. The answer may summarize the diagram in prose — do NOT only embed mermaid in the answer.`
-    : "- Diagrams: flowchart TD, valid mermaid in diagram field, quote labels with parentheses, suggestedTab \"diagram\"."
+    ? `- DIAGRAM REQUEST: put the full mermaid source in the "diagram" field (raw mermaid, no fences). Use flowchart TD only (not graph TD). NEVER use class-diagram syntax (<|--, class) inside flowchart — use --> arrows for relationships. Quote labels: D["Model (LLM)"]. Subgraph titles in quotes. Max ~20 nodes. Set suggestedTab "diagram", code null.`
+    : "- Diagrams: flowchart TD, no class-diagram syntax in flowchart, suggestedTab \"diagram\"."
 }`;
 }
 
@@ -424,6 +427,67 @@ User has ${resources.length} source(s). ${
   }
 }
 
+export async function fixMermaidDiagram(
+  apiKey: string,
+  diagram: string,
+  message: string,
+  options?: { parseError?: string; issues?: string[] }
+): Promise<string | null> {
+  const local = applyLocalMermaidRepairs(diagram);
+  const issues = options?.issues ?? detectMermaidIssues(local);
+  const parseError = options?.parseError;
+
+  const prompt = `You fix broken mermaid diagrams. Return ONLY valid mermaid source — no JSON, no markdown fences, no explanation.
+
+User asked: ${message}
+
+STRICT RULES:
+1. Use exactly ONE diagram starting with "flowchart TD" (or "flowchart LR" if wide).
+2. NEVER use class-diagram syntax (<|--, ..|>, class) inside flowchart.
+3. Show type hierarchies with --> arrows (parent --> child), not inheritance arrows.
+4. Quote labels with spaces or parentheses: A["System Message"]
+5. Quote subgraph titles: subgraph "Message Types"
+6. Keep ≤20 nodes; avoid edge labels with special characters unless quoted.
+7. No trailing semicolons.
+
+${issues.length ? `Detected problems:\n${issues.map((i) => `- ${i}`).join("\n")}\n` : ""}${
+    parseError ? `Mermaid parse error:\n${parseError}\n` : ""
+  }
+Broken diagram:
+${local}
+
+Fixed mermaid:`;
+
+  const data = await callGemini(
+    apiKey,
+    buildRequestBody([{ text: prompt }], [], false)
+  );
+  const text = extractResponseText(data);
+  if (!text) return null;
+
+  return (
+    sanitizeMermaidDiagram(text) ?? applyLocalMermaidRepairs(text.trim())
+  );
+}
+
+async function finalizeMermaidDiagram(
+  apiKey: string,
+  diagram: string,
+  message: string
+): Promise<string | null> {
+  let current = applyLocalMermaidRepairs(diagram);
+  let issues = detectMermaidIssues(current);
+
+  for (let attempt = 0; attempt < 2 && issues.length > 0; attempt++) {
+    const fixed = await fixMermaidDiagram(apiKey, current, message, { issues });
+    if (!fixed) break;
+    current = applyLocalMermaidRepairs(fixed);
+    issues = detectMermaidIssues(current);
+  }
+
+  return current || null;
+}
+
 async function callGemini(
   apiKey: string,
   body: Record<string, unknown>
@@ -562,10 +626,15 @@ export async function researchWithGemini(
   } else {
     citations = citations.filter((c) => c.source !== "web");
   }
+  citations = dedupeCitations(citations);
 
-  const diagram =
+  let diagram =
     sanitizeMermaidDiagram(parsed.diagram) ??
     sanitizeMermaidDiagram(extractMermaidFromMarkdown(parsed.answer));
+
+  if (diagram) {
+    diagram = await finalizeMermaidDiagram(apiKey, diagram, message);
+  }
 
   const diagramRequest = asksForDiagram(message);
   const suggestedTab =
