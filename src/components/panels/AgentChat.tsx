@@ -16,7 +16,10 @@ import {
 } from "lucide-react";
 import { ChatMessageContent } from "@/components/shared/ChatMessageContent";
 import { buildChatSuggestions } from "@/lib/chat-suggestions";
-import { normalizeMessageCitations } from "@/lib/citations";
+import {
+  normalizeMessageCitations,
+  resourcesForResearch,
+} from "@/lib/citations";
 import { useApp } from "@/context/AppContext";
 import type { ChatCitation, Resource } from "@/types";
 
@@ -404,10 +407,14 @@ export function AgentChat() {
                 {msg.role === "assistant" ? (
                   <ChatMessageContent
                     content={msg.content}
-                    resources={resources}
+                    resources={resourcesForResearch(
+                      resources,
+                      msg.researchSourceIds
+                    )}
                     citations={normalizeMessageCitations(
                       msg.citations,
-                      resources
+                      resources,
+                      msg.researchSourceIds
                     )}
                     onOpenDocument={selectResource}
                   />
@@ -421,7 +428,8 @@ export function AgentChat() {
                 <CitationLinks
                   citations={normalizeMessageCitations(
                     msg.citations,
-                    resources
+                    resources,
+                    msg.researchSourceIds
                   )}
                   onOpenDocument={selectResource}
                 />

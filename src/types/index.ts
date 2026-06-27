@@ -56,6 +56,8 @@ export interface ChatMessage {
   timestamp: Date;
   citations?: ChatCitation[] | string[];
   scopedLabel?: string;
+  /** Resource ids actually sent to the model for this turn (for citation index mapping). */
+  researchSourceIds?: string[];
 }
 
 export type CanvasTab = "document" | "playground" | "comparison" | "diagram";

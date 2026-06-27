@@ -32,6 +32,13 @@ function asksForCode(message: string): boolean {
   );
 }
 
+function normalizeScopedAnswer(answer: string, sourceName: string): string {
+  return answer.replace(
+    /((?:provided\s+)?(?:the\s+)?source\s*\[1\]\s+)[^\n.,;]+/gi,
+    `$1${sourceName}`
+  );
+}
+
 function asksForDiagram(message: string): boolean {
   return /\b(diagram|mermaid|flowchart|architecture|draw\s+(?:a|an)|visuali[sz]e)\b/i.test(
     message
@@ -57,9 +64,12 @@ function buildPrompt(
   const diagramRequest = asksForDiagram(message);
   const scopedSingle = scope === "active" && resources.length === 1;
   const scopedNote = scopedSingle
-    ? `\nScoped query (@): the user limited this question to ONE source. Use url_context to read that URL in full. ${
+    ? `\nScoped query (@): the user limited this question to ONE source ONLY.
+[1] is EXACTLY: "${resources[0].name}"${resources[0].url ? ` (${resources[0].url})` : ""}.
+In answer prose, refer to [1] using this exact title only — NEVER name or cite any other documentation.
+Use url_context to read that URL in full. ${
         webSearchEnabled
-          ? "If the page lacks the answer, use google_search for official docs on the same library — prefer the same domain when possible."
+          ? "If the page lacks the answer, use google_search on the same domain when possible."
           : "Answer only from that source; do not use general knowledge."
       }\n`
     : "";
@@ -642,8 +652,13 @@ export async function researchWithGemini(
       ? "diagram"
       : (parsed.suggestedTab ?? null);
 
+  let answer = parsed.answer;
+  if (scope === "active" && resources.length === 1) {
+    answer = normalizeScopedAnswer(answer, resources[0].name);
+  }
+
   return {
-    answer: parsed.answer,
+    answer,
     citations,
     code:
       parsed.comparison || (diagram && diagramRequest)

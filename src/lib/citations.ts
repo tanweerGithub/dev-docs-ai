@@ -1,5 +1,19 @@
 import type { ChatCitation, Resource } from "@/types";
 
+/** Sources used for a specific chat turn (scoped @ query uses a subset). */
+export function resourcesForResearch(
+  allResources: Resource[],
+  researchSourceIds?: string[]
+): Resource[] {
+  if (!researchSourceIds?.length) return allResources;
+
+  const ordered = researchSourceIds
+    .map((id) => allResources.find((r) => r.id === id))
+    .filter((r): r is Resource => !!r);
+
+  return ordered.length > 0 ? ordered : allResources;
+}
+
 export interface RawCitation {
   sourceIndex?: number | null;
   label: string;
@@ -66,9 +80,13 @@ export function enrichCitations(
 
     const idx =
       typeof item.sourceIndex === "number" ? item.sourceIndex - 1 : -1;
-    const byIndex = idx >= 0 ? resources[idx] : undefined;
-    const resource =
-      byIndex ?? matchResource(label, citationUrl, resources);
+    const byIndex =
+      idx >= 0 && idx < resources.length ? resources[idx] : undefined;
+    let resource = byIndex ?? matchResource(label, citationUrl, resources);
+
+    if (resources.length === 1 && idx === 0) {
+      resource = resources[0];
+    }
 
     const urlMatchesUserSource =
       !!citationUrl &&
@@ -119,13 +137,32 @@ export function dedupeCitations(citations: ChatCitation[]): ChatCitation[] {
 
 export function normalizeMessageCitations(
   citations: ChatCitation[] | string[] | undefined,
-  resources: Resource[]
+  allResources: Resource[],
+  researchSourceIds?: string[]
 ): ChatCitation[] {
   if (!citations?.length) return [];
+
+  const resources = resourcesForResearch(allResources, researchSourceIds);
+
   if (typeof citations[0] === "string") {
     return dedupeCitations(
       enrichCitations(citations as string[], resources)
     );
   }
-  return dedupeCitations(citations as ChatCitation[]);
+
+  const enriched = (citations as ChatCitation[]).map((citation) => {
+    if (citation.resourceId) {
+      const resource = allResources.find((r) => r.id === citation.resourceId);
+      if (resource) {
+        return {
+          ...citation,
+          label: resource.name,
+          url: citation.source === "web" ? citation.url : resource.url,
+        };
+      }
+    }
+    return citation;
+  });
+
+  return dedupeCitations(enriched);
 }

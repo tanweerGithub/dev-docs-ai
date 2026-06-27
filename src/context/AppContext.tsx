@@ -378,6 +378,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             content: data.answer,
             timestamp: new Date(),
             citations: data.citations,
+            researchSourceIds: scoped.map((r) => r.id),
           },
         ]);
       } catch (err) {

@@ -53,10 +53,25 @@ function resolveCitationTarget(
   resources: Resource[],
   citations: ChatCitation[]
 ) {
-  const resource = resources[index];
-  const citation =
-    citations.find((c) => c.resourceId === resource?.id) ??
-    citations[index];
+  const docCitations = citations.filter((c) => c.source !== "web");
+  const citation = docCitations[index] ?? citations[index];
+
+  let resource: Resource | undefined;
+  if (citation?.resourceId) {
+    resource = resources.find((r) => r.id === citation.resourceId);
+  }
+  if (!resource && index >= 0 && index < resources.length) {
+    resource = resources[index];
+  }
+  if (!resource && citation?.label) {
+    const lower = citation.label.toLowerCase();
+    resource = resources.find(
+      (r) =>
+        r.name.toLowerCase() === lower ||
+        r.name.toLowerCase().includes(lower) ||
+        lower.includes(r.name.toLowerCase())
+    );
+  }
 
   return { resource, citation };
 }
