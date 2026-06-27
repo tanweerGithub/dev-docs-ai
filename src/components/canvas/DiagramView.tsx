@@ -11,10 +11,22 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
 
+function fitDiagramZoom(svg: SVGSVGElement, viewportWidth: number): number {
+  const box = svg.getBBox();
+  const width = box.width || svg.clientWidth;
+  if (!width || !viewportWidth) return 1;
+
+  const target = viewportWidth * 0.88;
+  if (width >= target * 0.75) return 1;
+
+  return Math.min(MAX_ZOOM, Math.max(1, target / width));
+}
+
 export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [renderError, setRenderError] = useState<string | null>(null);
 
@@ -66,9 +78,18 @@ export function DiagramView() {
 
         const svgEl = containerRef.current.querySelector("svg");
         if (svgEl) {
-          svgEl.style.maxWidth = "none";
+          svgEl.removeAttribute("height");
+          svgEl.removeAttribute("width");
+          svgEl.style.width = "auto";
           svgEl.style.height = "auto";
+          svgEl.style.maxWidth = "none";
+          svgEl.style.display = "block";
         }
+
+        requestAnimationFrame(() => {
+          if (cancelled || !svgEl || !scrollRef.current) return;
+          setZoom(fitDiagramZoom(svgEl, scrollRef.current.clientWidth));
+        });
       } catch (err) {
         if (cancelled) return;
         const message =
@@ -143,7 +164,8 @@ export function DiagramView() {
       )}
 
       <div
-        className={`min-h-0 flex-1 overflow-auto p-6 ${
+        ref={scrollRef}
+        className={`min-h-0 flex-1 overflow-auto ${
           isLight ? "bg-zinc-50" : "bg-zinc-950"
         }`}
         onWheel={(e) => {
@@ -152,11 +174,19 @@ export function DiagramView() {
           adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
         }}
       >
-        <div
-          className="inline-block origin-top-left transition-transform duration-150"
-          style={{ transform: `scale(${zoom})` }}
-        >
-          <div ref={containerRef} className="[&_svg]:max-w-none" />
+        <div className="flex min-h-full w-full items-center justify-center p-8">
+          <div
+            className="transition-transform duration-150"
+            style={{
+              transform: `scale(${zoom})`,
+              transformOrigin: "center center",
+            }}
+          >
+            <div
+              ref={containerRef}
+              className="[&_svg]:mx-auto [&_svg]:block [&_svg]:h-auto [&_svg]:w-auto"
+            />
+          </div>
         </div>
       </div>
     </div>
