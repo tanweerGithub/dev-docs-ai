@@ -13,6 +13,7 @@ import {
   User,
   X,
 } from "lucide-react";
+import { ChatMessageContent } from "@/components/shared/ChatMessageContent";
 import { normalizeMessageCitations } from "@/lib/citations";
 import { useApp } from "@/context/AppContext";
 import type { ChatCitation, Resource } from "@/types";
@@ -47,7 +48,7 @@ function CitationLinks({
 }) {
   return (
     <div className="mt-2 space-y-1.5 border-t border-zinc-800 pt-2">
-      <p className="text-[10px] font-medium text-zinc-500">References</p>
+      <p className="text-xs font-medium text-zinc-500">References</p>
       {citations.map((c, i) => {
         const text = (
           <>
@@ -67,7 +68,7 @@ function CitationLinks({
               key={`${c.label}-${i}`}
               type="button"
               onClick={() => onOpenDocument(c.resourceId!)}
-              className="block w-full cursor-pointer text-left text-[10px] text-emerald-400/90 hover:text-emerald-300 hover:underline"
+              className="block w-full cursor-pointer text-left text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
             >
               {text}
             </button>
@@ -81,7 +82,7 @@ function CitationLinks({
               href={c.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="block text-[10px] text-emerald-400/90 hover:text-emerald-300 hover:underline"
+              className="block text-xs text-emerald-400/90 hover:text-emerald-300 hover:underline"
             >
               {text}
             </a>
@@ -89,7 +90,7 @@ function CitationLinks({
         }
 
         return (
-          <p key={`${c.label}-${i}`} className="text-[10px] text-emerald-400/80">
+          <p key={`${c.label}-${i}`} className="text-xs text-emerald-400/80">
             {text}
           </p>
         );
@@ -115,7 +116,7 @@ export function AgentChat() {
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const scopedResources = useMemo(
@@ -157,9 +158,17 @@ export function AgentChat() {
     [resources.length]
   );
 
+  const resizeInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
+
   const handleInputChange = (value: string) => {
     setInput(value);
     updateMentionState(value);
+    requestAnimationFrame(resizeInput);
   };
 
   const selectMention = useCallback(
@@ -230,7 +239,7 @@ export function AgentChat() {
     else startListening();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionOpen && mentionCandidates.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -256,18 +265,22 @@ export function AgentChat() {
       }
     }
 
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void send(input);
     }
   };
 
   useEffect(() => {
+    resizeInput();
+  }, [input, resizeInput]);
+
+  useEffect(() => {
     return () => recognitionRef.current?.stop();
   }, []);
 
   return (
-    <aside className="flex h-full w-80 min-w-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950">
+    <aside className="flex h-full w-[26rem] min-w-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950">
       <div className="border-b border-zinc-800 px-4 py-4">
         <div className="flex items-center gap-2">
           <div className="rounded-lg bg-violet-500/20 p-2">
@@ -285,7 +298,7 @@ export function AgentChat() {
       </div>
 
       {resources.length > 0 && (
-        <p className="border-b border-zinc-800/50 px-4 py-1.5 text-[10px] text-zinc-500">
+        <p className="border-b border-zinc-800/50 px-4 py-2 text-xs text-zinc-500">
           Type <span className="text-violet-400">@</span> in the chat box to
           query a specific source · otherwise all sources are used
         </p>
@@ -311,21 +324,33 @@ export function AgentChat() {
               )}
             </div>
             <div
-              className={`min-w-0 max-w-[85%] overflow-hidden rounded-xl px-3 py-2.5 text-xs leading-relaxed ${
+              className={`min-w-0 max-w-[92%] overflow-hidden rounded-xl px-3.5 py-3 text-sm leading-relaxed ${
                 msg.role === "assistant"
                   ? "bg-zinc-900 text-zinc-300"
                   : "bg-blue-600/20 text-zinc-200"
               }`}
             >
               {msg.scopedLabel && msg.role === "user" && (
-                <p className="mb-1.5 text-[10px] font-medium text-violet-300">
+                <p className="mb-1.5 text-xs font-medium text-violet-300">
                   @{msg.scopedLabel}
                 </p>
               )}
               <div className="max-w-full overflow-x-auto">
-                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                  {msg.content}
-                </p>
+                {msg.role === "assistant" ? (
+                  <ChatMessageContent
+                    content={msg.content}
+                    resources={resources}
+                    citations={normalizeMessageCitations(
+                      msg.citations,
+                      resources
+                    )}
+                    onOpenDocument={selectResource}
+                  />
+                ) : (
+                  <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                    {msg.content}
+                  </p>
+                )}
               </div>
               {msg.citations && msg.citations.length > 0 && (
                 <CitationLinks
@@ -435,10 +460,11 @@ export function AgentChat() {
           </div>
         )}
 
-        <div className="flex gap-2">
-          <input
+        <div className="flex items-end gap-2">
+          <textarea
             ref={inputRef}
             value={input}
+            rows={3}
             onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={isLoading}
@@ -451,7 +477,7 @@ export function AgentChat() {
                     : "Ask about your documents..."
                 : "Add Gemini API key first"
             }
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none disabled:opacity-50"
+            className="min-h-[4.5rem] max-h-[12.5rem] min-w-0 flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none disabled:opacity-50"
           />
           {speechSupported && (
             <button

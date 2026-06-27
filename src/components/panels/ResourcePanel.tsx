@@ -52,7 +52,7 @@ export function ResourcePanel() {
   };
 
   return (
-    <aside className="relative flex h-full w-64 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
+    <aside className="relative flex h-full w-80 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
       <div className="border-b border-zinc-800 px-4 py-4">
         <h2 className="text-sm font-semibold text-zinc-100">Sources</h2>
         <p className="mt-1 text-xs text-zinc-500">
