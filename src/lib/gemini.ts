@@ -1,7 +1,7 @@
 import { enrichCitations, type RawCitation } from "@/lib/citations";
 import type { ChatCitation, ResearchResponse, Resource } from "@/types";
 
-const MODEL = "gemini-2.0-flash";
+const MODEL = "gemini-2.5-flash";
 
 const GEMINI_FILE_MIMES = new Set([
   "application/pdf",
