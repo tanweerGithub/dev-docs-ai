@@ -1,116 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Network, ZoomIn, ZoomOut } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Network } from "lucide-react";
 import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
-import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
 import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
-
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 2.5;
-const ZOOM_STEP = 0.15;
-
-function fitDiagramZoom(svg: SVGSVGElement, viewportWidth: number): number {
-  const box = svg.getBBox();
-  const width = box.width || svg.clientWidth;
-  if (!width || !viewportWidth) return 1;
-
-  const target = viewportWidth * 0.88;
-  if (width >= target * 0.75) return 1;
-
-  return Math.min(MAX_ZOOM, Math.max(1, target / width));
-}
 
 export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  const [renderError, setRenderError] = useState<string | null>(null);
-
-  const cleanDiagram = sanitizeMermaidDiagram(diagram);
 
   useEffect(() => {
-    if (!cleanDiagram) return;
-    setZoom(1);
-    setRenderError(null);
-  }, [cleanDiagram]);
-
-  useEffect(() => {
-    if (!cleanDiagram || !containerRef.current) return;
+    if (!diagram || !containerRef.current) return;
 
     let cancelled = false;
 
     (async () => {
-      try {
-        const mermaid = (await import("mermaid")).default;
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: isLight ? "neutral" : "dark",
-          securityLevel: "loose",
-          themeVariables: isLight
-            ? {
-                primaryColor: "#dbeafe",
-                primaryTextColor: "#18181b",
-                lineColor: "#a1a1aa",
-                secondaryColor: "#f4f4f5",
-                tertiaryColor: "#e4e4e7",
-              }
-            : {
-                primaryColor: "#3b82f6",
-                primaryTextColor: "#e4e4e7",
-                lineColor: "#52525b",
-                secondaryColor: "#18181b",
-                tertiaryColor: "#27272a",
-              },
-        });
+      const mermaid = (await import("mermaid")).default;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isLight ? "neutral" : "dark",
+        themeVariables: isLight
+          ? {
+              primaryColor: "#dbeafe",
+              primaryTextColor: "#18181b",
+              lineColor: "#a1a1aa",
+              secondaryColor: "#f4f4f5",
+              tertiaryColor: "#e4e4e7",
+            }
+          : {
+              primaryColor: "#3b82f6",
+              primaryTextColor: "#e4e4e7",
+              lineColor: "#52525b",
+              secondaryColor: "#18181b",
+              tertiaryColor: "#27272a",
+            },
+      });
 
-        if (cancelled || !containerRef.current) return;
+      if (cancelled || !containerRef.current) return;
 
-        const id = `mmd-${Date.now()}`;
-        const { svg } = await mermaid.render(id, cleanDiagram);
-        if (cancelled || !containerRef.current) return;
-
-        containerRef.current.innerHTML = svg;
-        setRenderError(null);
-
-        const svgEl = containerRef.current.querySelector("svg");
-        if (svgEl) {
-          svgEl.removeAttribute("height");
-          svgEl.removeAttribute("width");
-          svgEl.style.width = "auto";
-          svgEl.style.height = "auto";
-          svgEl.style.maxWidth = "none";
-          svgEl.style.display = "block";
-        }
-
-        requestAnimationFrame(() => {
-          if (cancelled || !svgEl || !scrollRef.current) return;
-          setZoom(fitDiagramZoom(svgEl, scrollRef.current.clientWidth));
-        });
-      } catch (err) {
-        if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : "Could not render diagram";
-        setRenderError(message);
-        if (containerRef.current) containerRef.current.innerHTML = "";
-      }
+      const id = `mmd-${Date.now()}`;
+      const { svg } = await mermaid.render(id, diagram);
+      containerRef.current.innerHTML = svg;
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [cleanDiagram, isLight]);
+  }, [diagram, isLight]);
 
-  const adjustZoom = (delta: number) => {
-    setZoom((z) =>
-      Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((z + delta).toFixed(2))))
-    );
-  };
-
-  if (!cleanDiagram) {
+  if (!diagram) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <Network className="h-10 w-10 text-zinc-700" />
@@ -126,69 +66,13 @@ export function DiagramView() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <ArtifactBanner meta={diagramMeta} />
-      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-        <span className="text-sm text-zinc-500">Research diagram</span>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => adjustZoom(-ZOOM_STEP)}
-            disabled={zoom <= MIN_ZOOM}
-            className="rounded border border-zinc-700 p-1.5 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
-            aria-label="Zoom out"
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </button>
-          <span className="min-w-[3rem] text-center text-xs text-zinc-500">
-            {Math.round(zoom * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => adjustZoom(ZOOM_STEP)}
-            disabled={zoom >= MAX_ZOOM}
-            className="rounded border border-zinc-700 p-1.5 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-40"
-            aria-label="Zoom in"
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </button>
-        </div>
+      <div className="border-b border-zinc-800 px-4 py-2">
+        <span className="text-xs text-zinc-500">Research diagram</span>
       </div>
-
-      {renderError && (
-        <div className="flex items-start gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-          <div>
-            <p className="font-medium">Diagram could not be rendered</p>
-            <p className="mt-1 text-amber-200/80">{renderError}</p>
-          </div>
-        </div>
-      )}
-
       <div
-        ref={scrollRef}
-        className={`min-h-0 flex-1 overflow-auto ${
-          isLight ? "bg-zinc-50" : "bg-zinc-950"
-        }`}
-        onWheel={(e) => {
-          if (!e.ctrlKey && !e.metaKey) return;
-          e.preventDefault();
-          adjustZoom(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-        }}
-      >
-        <div className="flex min-h-full w-full items-center justify-center p-8">
-          <div
-            className="transition-transform duration-150"
-            style={{
-              transform: `scale(${zoom})`,
-              transformOrigin: "center center",
-            }}
-          >
-            <div
-              ref={containerRef}
-              className="[&_svg]:mx-auto [&_svg]:block [&_svg]:h-auto [&_svg]:w-auto"
-            />
-          </div>
-        </div>
-      </div>
+        ref={containerRef}
+        className="flex flex-1 items-center justify-center overflow-auto p-8 [&_svg]:max-h-full [&_svg]:max-w-full"
+      />
     </div>
   );
 }
