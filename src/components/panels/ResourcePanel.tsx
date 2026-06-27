@@ -123,7 +123,10 @@ export function ResourcePanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-14">
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            Your sources ({resources.length})
+          </p>
           {resources.length > 0 && (
             <button
               type="button"
@@ -133,9 +136,6 @@ export function ResourcePanel() {
               Clear all
             </button>
           )}
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-            Your sources ({resources.length})
-          </p>
         </div>
         {resources.length === 0 ? (
           <p className="py-6 text-center text-xs text-zinc-600">

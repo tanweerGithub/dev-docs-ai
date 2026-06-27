@@ -18,6 +18,15 @@ const GEMINI_FILE_MIMES = new Set([
   "text/csv",
 ]);
 
+const NOT_FOUND_OPENING =
+  "**Not found in your sources.**";
+
+function asksForCode(message: string): boolean {
+  return /\b(code|snippet|example|implement|sample|multi-?agent)\b/i.test(
+    message
+  );
+}
+
 function buildPrompt(
   message: string,
   resources: Resource[],
@@ -32,60 +41,63 @@ function buildPrompt(
     })
     .join("\n");
 
-  return `You are DevDocs AI — a multi-document research assistant for technical documentation. You help developers research libraries, APIs, and frameworks from their uploaded docs.
+  const codeRequest = asksForCode(message);
 
-The user's sources (cite these by sourceIndex — primary grounding):
+  return `You are DevDocs AI — a multi-document research assistant for technical documentation.
+
+The user's sources (cite by sourceIndex):
 ${docList || "No documents yet."}
 
 User question: ${message}
 
-Respond with JSON only:
+You MUST respond with a single valid JSON object (no markdown fences outside JSON). Never return an empty response.
+
 {
-  "answer": "Clear research answer in markdown. Reference sources inline like [1] or [1 p.12] for PDFs. Prefer facts from the user's sources above.",
-  "citations": [
-    {
-      "sourceIndex": 1,
-      "label": "Exact source name from the list above",
-      "excerpt": "Short quoted or paraphrased point from that source",
-      "url": "URL if source is a url type, else null",
-      "page": 12,
-      "source": "document"
-    }
-  ],
+  "answer": "markdown string",
+  "citations": [{ "sourceIndex": 1, "label": "...", "excerpt": "...", "url": null, "page": null, "source": "document" }],
   "code": { "language": "python", "code": "..." } or null,
-  "comparison": { ... } or null,
-  "diagram": "mermaid string" or null,
+  "comparison": null,
+  "diagram": null,
   "suggestedTab": "document|playground|comparison|diagram|null"
 }
 
-Citation rules (critical):
-- ALWAYS cite user's uploaded sources first when used. Each citation must use sourceIndex matching [1], [2], etc.
-- For PDFs and uploaded files, include page when known (page field) and reference inline as [1 p.12] in the answer.
-- Set source to "document" for user sources. Include their url field when the source has a URL.
-- Do not invent sourceIndex values — only use indices from the source list.
+Answer structure (critical — follow order):
 ${
-  webSearchEnabled
-    ? `- Web search is ON: you may supplement with google_search only when user sources lack the answer. Mark those citations source: "web" with a real https url. User sources still take priority.`
-    : `- Web search is OFF (document-only mode):
-  • Use ONLY the user's listed sources and inline files. Do NOT use google_search.
-  • Do NOT cite Medium, blogs, or any URL not in the source list above.
-  • Every factual claim must trace to a user source citation.
-  • If the sources do not contain enough information to answer, respond honestly in "answer" that nothing relevant was found in the current documents, and tell the user to turn on **Web search** near the chat box and ask again — or add more documentation.
-  • In that case: code, comparison, and diagram should be null; citations empty or only from user sources.`
+  !webSearchEnabled
+    ? `1. DOCUMENT-ONLY MODE — check sources FIRST before writing anything else.
+2. If the user asks for code/examples and the sources lack runnable code for that topic, your answer MUST begin with exactly: ${NOT_FOUND_OPENING}
+3. After that line, at most 2 short sentences (optional) summarizing what sources do mention — no long essays.
+4. Then tell the user to turn on **Web search** near the chat box and ask again, or add documentation that contains the code.
+5. Set code, comparison, diagram to null. Do not fabricate code from general knowledge.
+6. If sources have zero relevant content, only output the not-found block + next-step guidance (under 80 words total).`
+    : `1. Check user sources first. If they contain the answer, use them and cite [1], [2], etc.
+2. If user sources lack code or detail, use google_search and cite source: "web".
+3. If user asked for code and you find it (sources or web), set code + suggestedTab "playground".
+4. If nothing useful after sources + web, begin answer with: **Could not find a reliable answer.** Then explain briefly and suggest adding a more specific doc link.`
+}
+${
+  codeRequest
+    ? `
+Code request rules:
+- Only include "code" if you have a concrete runnable example from user sources${webSearchEnabled ? " or vetted web results" : ""}.
+- Never bury "no code in documents" at the end — if missing, lead with ${NOT_FOUND_OPENING}
+- Do not pad with conceptual paragraphs when code was requested but is absent.`
+    : ""
 }
 
-Mermaid diagram rules (when user asks for a diagram):
-- Set suggestedTab to "diagram" and provide a valid diagram string.
-- Use flowchart TD or graph TD only. No markdown fences or backticks inside diagram.
-- Quote labels with special characters: A["Step 1"], subgraph G["Group name"]
-- Avoid parentheses in unquoted labels. Keep node IDs simple (A, B, C1).
+Citation rules:
+- sourceIndex must match [1], [2] in the source list. No invented indices.
+- PDFs: use page in citations and [1 p.12] inline when known.
+${
+  webSearchEnabled
+    ? "- Web citations: source \"web\" with https url. User sources take priority."
+    : "- No web citations. No Medium, blogs, or URLs outside the source list."
+}
 
-Research rules:
-- Ground answers in the user's provided documents/URLs/files via url_context (for their links) and inline files.
-- LangChain 1.x: create_agent only, never AgentExecutor.
-- Google ADK: Agent class with run().
-- Comparison: LangChain first, Google ADK second, same task, suggestedTab "comparison", code null.
-- Single-framework code: suggestedTab "playground".`;
+Other rules:
+- LangChain 1.x: create_agent only. Google ADK: Agent + run().
+- Comparison: LangChain first, ADK second, suggestedTab "comparison", code null.
+- Diagrams: flowchart TD, valid mermaid, suggestedTab "diagram".`;
 }
 
 function parseJson<T>(text: string): T {
@@ -104,6 +116,107 @@ interface ParsedResearchResponse {
   comparison?: ResearchResponse["comparison"];
   diagram?: string | null;
   suggestedTab?: ResearchResponse["suggestedTab"];
+}
+
+interface GeminiApiResponse {
+  candidates?: {
+    content?: { parts?: { text?: string }[] };
+    finishReason?: string;
+  }[];
+  promptFeedback?: { blockReason?: string };
+}
+
+function extractResponseText(data: GeminiApiResponse): string | null {
+  const parts = data.candidates?.[0]?.content?.parts;
+  if (!parts?.length) return null;
+
+  const text = parts
+    .map((p) => p.text?.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+
+  return text || null;
+}
+
+function emptyResponseMessage(
+  data: GeminiApiResponse,
+  webSearchEnabled: boolean
+): string {
+  const finish = data.candidates?.[0]?.finishReason;
+  const blocked = data.promptFeedback?.blockReason;
+
+  if (blocked) {
+    return `Response blocked (${blocked}). Try rephrasing your question.`;
+  }
+  if (finish && finish !== "STOP") {
+    return `Gemini stopped early (${finish}). Try a shorter or more specific question.`;
+  }
+  if (webSearchEnabled) {
+    return `${NOT_FOUND_OPENING}\n\nI couldn't complete a web search for this request. Try scoping to one source with @, or rephrase (e.g. "show ADK multi-agent code from my linked doc").`;
+  }
+  return `${NOT_FOUND_OPENING}\n\nYour current sources don't contain enough on this topic. Turn on **Web search** above the chat box and ask again, or add documentation that covers it.`;
+}
+
+function fallbackResponse(
+  message: string,
+  webSearchEnabled: boolean
+): ResearchResponse {
+  const code = asksForCode(message);
+  const hint = code
+    ? "Add a doc link that includes code examples, or enable **Web search** and ask again."
+    : "Add more relevant documentation, or enable **Web search** and ask again.";
+
+  return {
+    answer: `${NOT_FOUND_OPENING}\n\nI couldn't produce an answer from your session. ${hint}`,
+    citations: [],
+    code: null,
+    comparison: null,
+    diagram: null,
+    suggestedTab: null,
+  };
+}
+
+async function callGemini(
+  apiKey: string,
+  body: Record<string, unknown>
+): Promise<GeminiApiResponse> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as {
+      error?: { message?: string };
+    };
+    throw new Error(err.error?.message ?? `Gemini API error (${res.status})`);
+  }
+
+  return (await res.json()) as GeminiApiResponse;
+}
+
+function buildRequestBody(
+  parts: { text?: string; inline_data?: { mime_type: string; data: string } }[],
+  tools: Record<string, Record<string, never>>[],
+  jsonMode: boolean
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    contents: [{ parts }],
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 8192,
+      ...(jsonMode ? { responseMimeType: "application/json" } : {}),
+    },
+  };
+  if (tools.length > 0) {
+    body.tools = tools;
+  }
+  return body;
 }
 
 export async function researchWithGemini(
@@ -128,57 +241,55 @@ export async function researchWithGemini(
   }
 
   const urlResources = resources.filter((r) => r.type === "url" && r.url);
-  const tools: Record<string, Record<string, never>>[] = [];
-  if (urlResources.length > 0) {
-    tools.push({ url_context: {} });
-  }
-  if (webSearchEnabled) {
-    tools.push({ google_search: {} });
-  }
-  const useTools = tools.length > 0;
+  const urlTool = urlResources.length > 0 ? [{ url_context: {} }] : [];
+  const fullTools: Record<string, Record<string, never>>[] = [
+    ...urlTool,
+    ...(webSearchEnabled ? [{ google_search: {} }] : []),
+  ];
 
-  const body: Record<string, unknown> = {
-    contents: [{ parts }],
-    generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 8192,
-      // Gemini rejects tools + responseMimeType together on 2.5-flash.
-      ...(useTools ? {} : { responseMimeType: "application/json" }),
-    },
-  };
-
-  if (useTools) {
-    body.tools = tools;
-  }
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    }
+  let data = await callGemini(
+    apiKey,
+    buildRequestBody(parts, fullTools, fullTools.length === 0)
   );
+  let text = extractResponseText(data);
 
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as {
-      error?: { message?: string };
+  if (!text && fullTools.length > 0) {
+    const retryTools = urlTool.length > 0 ? urlTool : [];
+    data = await callGemini(
+      apiKey,
+      buildRequestBody(parts, retryTools, retryTools.length === 0)
+    );
+    text = extractResponseText(data);
+  }
+
+  if (!text) {
+    data = await callGemini(apiKey, buildRequestBody(parts, [], true));
+    text = extractResponseText(data);
+  }
+
+  if (!text) {
+    return {
+      answer: emptyResponseMessage(data, webSearchEnabled),
+      citations: [],
+      code: null,
+      comparison: null,
+      diagram: null,
+      suggestedTab: null,
     };
-    throw new Error(err.error?.message ?? `Gemini API error (${res.status})`);
   }
 
-  const data = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
+  let parsed: ParsedResearchResponse;
+  try {
+    parsed = parseJson<ParsedResearchResponse>(text);
+  } catch {
+    return fallbackResponse(message, webSearchEnabled);
+  }
 
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (!text) throw new Error("Empty response from Gemini");
+  if (!parsed.answer?.trim()) {
+    return fallbackResponse(message, webSearchEnabled);
+  }
 
-  const parsed = parseJson<ParsedResearchResponse>(text);
-  let citations: ChatCitation[] = enrichCitations(
-    parsed.citations,
-    resources
-  );
+  let citations: ChatCitation[] = enrichCitations(parsed.citations, resources);
   if (!webSearchEnabled) {
     citations = citations.filter((c) => c.source !== "web");
   }
