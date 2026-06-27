@@ -16,10 +16,6 @@ export const metadata: Metadata = {
   title: "DevDocs AI — Multi-Document Research Assistant",
   description:
     "Upload documents, preview them, and chat with Gemini for research insights, code, comparisons, and diagrams.",
-  icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
-    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
-  },
 };
 
 const themeInitScript = `
