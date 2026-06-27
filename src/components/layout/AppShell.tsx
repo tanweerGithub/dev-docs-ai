@@ -1,12 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { BookMarked, Moon, Sun } from "lucide-react";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { ThemeProvider, useTheme } from "@/context/ThemeContext";
 import { AgentChat } from "@/components/panels/AgentChat";
 import { ResourcePanel } from "@/components/panels/ResourcePanel";
 import { CenterCanvas } from "@/components/canvas/CenterCanvas";
+import { WelcomeModal } from "@/components/onboarding/WelcomeModal";
 import { ApiKeySettings } from "@/components/settings/ApiKeySettings";
+import {
+  getOnboardingDismissed,
+  setOnboardingDismissed,
+} from "@/lib/onboarding-storage";
 
 function Header() {
   const { resources } = useApp();
@@ -50,6 +56,29 @@ function Header() {
 
 function Shell() {
   const { theme } = useTheme();
+  const { apiKey, setApiKey, loadDemo } = useApp();
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (!apiKey && !getOnboardingDismissed()) {
+      setShowWelcome(true);
+    }
+  }, [apiKey]);
+
+  const closeWelcome = () => {
+    setOnboardingDismissed(true);
+    setShowWelcome(false);
+  };
+
+  const handleSaveKey = (key: string) => {
+    setApiKey(key);
+    closeWelcome();
+  };
+
+  const handleTryDemo = () => {
+    loadDemo("langchain");
+    closeWelcome();
+  };
 
   return (
     <div
@@ -62,6 +91,14 @@ function Shell() {
         <CenterCanvas />
         <AgentChat />
       </div>
+
+      {showWelcome && (
+        <WelcomeModal
+          onSave={handleSaveKey}
+          onTryDemo={handleTryDemo}
+          onDismiss={closeWelcome}
+        />
+      )}
     </div>
   );
 }
