@@ -11,7 +11,7 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
 
-export function DiagramView({ isActive }: { isActive: boolean }) {
+export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -27,52 +27,31 @@ export function DiagramView({ isActive }: { isActive: boolean }) {
   }, [cleanDiagram]);
 
   useEffect(() => {
-    if (!isActive || !cleanDiagram || !containerRef.current) return;
+    if (!cleanDiagram || !containerRef.current) return;
 
     let cancelled = false;
-    let frame = 0;
 
-    frame = requestAnimationFrame(() => {
-      void (async () => {
+    (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
           startOnLoad: false,
-          theme: "base",
+          theme: isLight ? "neutral" : "dark",
           securityLevel: "loose",
           themeVariables: isLight
             ? {
-                darkMode: false,
-                background: "#fafafa",
                 primaryColor: "#dbeafe",
                 primaryTextColor: "#18181b",
-                primaryBorderColor: "#a1a1aa",
-                lineColor: "#71717a",
+                lineColor: "#a1a1aa",
                 secondaryColor: "#f4f4f5",
                 tertiaryColor: "#e4e4e7",
-                textColor: "#18181b",
-                mainBkg: "#fafafa",
-                nodeBorder: "#a1a1aa",
-                clusterBkg: "#f4f4f5",
-                titleColor: "#18181b",
-                edgeLabelBackground: "#fafafa",
               }
             : {
-                darkMode: true,
-                background: "#09090b",
-                primaryColor: "#1e3a5f",
-                primaryTextColor: "#f4f4f5",
-                primaryBorderColor: "#60a5fa",
-                lineColor: "#a1a1aa",
+                primaryColor: "#3b82f6",
+                primaryTextColor: "#e4e4e7",
+                lineColor: "#52525b",
                 secondaryColor: "#18181b",
                 tertiaryColor: "#27272a",
-                textColor: "#f4f4f5",
-                mainBkg: "#18181b",
-                nodeBorder: "#60a5fa",
-                clusterBkg: "#27272a",
-                titleColor: "#f4f4f5",
-                edgeLabelBackground: "#18181b",
-                fontSize: "15px",
               },
         });
 
@@ -87,11 +66,8 @@ export function DiagramView({ isActive }: { isActive: boolean }) {
 
         const svgEl = containerRef.current.querySelector("svg");
         if (svgEl) {
-          svgEl.removeAttribute("height");
-          svgEl.removeAttribute("width");
           svgEl.style.maxWidth = "none";
           svgEl.style.height = "auto";
-          svgEl.style.minWidth = "max-content";
         }
       } catch (err) {
         if (cancelled) return;
@@ -100,14 +76,12 @@ export function DiagramView({ isActive }: { isActive: boolean }) {
         setRenderError(message);
         if (containerRef.current) containerRef.current.innerHTML = "";
       }
-      })();
-    });
+    })();
 
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
     };
-  }, [cleanDiagram, isLight, isActive]);
+  }, [cleanDiagram, isLight]);
 
   const adjustZoom = (delta: number) => {
     setZoom((z) =>
@@ -169,7 +143,7 @@ export function DiagramView({ isActive }: { isActive: boolean }) {
       )}
 
       <div
-        className={`diagram-scroll min-h-0 flex-1 overflow-auto p-6 ${
+        className={`min-h-0 flex-1 overflow-auto p-6 ${
           isLight ? "bg-zinc-50" : "bg-zinc-950"
         }`}
         onWheel={(e) => {
@@ -179,17 +153,10 @@ export function DiagramView({ isActive }: { isActive: boolean }) {
         }}
       >
         <div
-          className="inline-block min-w-max origin-top-left transition-transform duration-150"
+          className="inline-block origin-top-left transition-transform duration-150"
           style={{ transform: `scale(${zoom})` }}
         >
-          <div
-            ref={containerRef}
-            className={
-              isLight
-                ? "[&_svg_text]:fill-zinc-900 [&_svg_tspan]:fill-zinc-900"
-                : "[&_svg_text]:fill-zinc-100 [&_svg_tspan]:fill-zinc-100 [&_svg_path]:stroke-zinc-300"
-            }
-          />
+          <div ref={containerRef} className="[&_svg]:max-w-none" />
         </div>
       </div>
     </div>

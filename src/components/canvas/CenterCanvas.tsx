@@ -46,27 +46,11 @@ export function CenterCanvas() {
         ))}
       </div>
 
-      <div className="relative flex-1 overflow-hidden">
-        <div
-          className={`absolute inset-0 ${activeTab === "document" ? "z-10" : "pointer-events-none invisible"}`}
-        >
-          <DocumentPreview />
-        </div>
-        <div
-          className={`absolute inset-0 ${activeTab === "playground" ? "z-10" : "pointer-events-none invisible"}`}
-        >
-          <Playground />
-        </div>
-        <div
-          className={`absolute inset-0 ${activeTab === "comparison" ? "z-10" : "pointer-events-none invisible"}`}
-        >
-          <ComparisonView />
-        </div>
-        <div
-          className={`absolute inset-0 ${activeTab === "diagram" ? "z-10" : "pointer-events-none invisible"}`}
-        >
-          <DiagramView isActive={activeTab === "diagram"} />
-        </div>
+      <div className="flex-1 overflow-hidden">
+        {activeTab === "document" && <DocumentPreview />}
+        {activeTab === "playground" && <Playground />}
+        {activeTab === "comparison" && <ComparisonView />}
+        {activeTab === "diagram" && <DiagramView />}
       </div>
     </main>
   );

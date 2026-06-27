@@ -157,10 +157,10 @@ export const DEMOS: Record<DemoId, DemoBundle> = {
     activeTab: "document",
     code: REDIS_CODE,
     comparison: null,
-    diagram: `flowchart LR
-  A["App"] --> R["Redis client"]
-  R --> S[("Redis")]
-  S --> C["Cached JSON"]`,
+    diagram: `graph LR
+  A[App] --> R[Redis client]
+  R --> S[(Redis)]
+  S --> C[Cached JSON]`,
     messages: [
       {
         id: "redis-u1",
@@ -194,12 +194,12 @@ Starter code is in the Playground. The Document tab previews the official guide.
     activeTab: "document",
     code: ADK_AGENT_CODE,
     comparison: null,
-    diagram: `flowchart TD
-  Q["User query"] --> A["ADK Agent"]
-  A --> M["Gemini model"]
-  A --> T["Tools"]
-  T --> S["google_search"]
-  M --> R["Agent response"]`,
+    diagram: `graph TD
+  Q[User query] --> A[ADK Agent]
+  A --> M[Gemini model]
+  A --> T[Tools]
+  T --> S[google_search]
+  M --> R[Agent response]`,
     messages: [
       {
         id: "adk-u1",
@@ -233,11 +233,11 @@ Starter code is in the Playground. The Document tab previews the ADK agents guid
     activeTab: "document",
     code: LANGCHAIN_AGENT_CODE,
     comparison: null,
-    diagram: `flowchart TD
-  Q["User message"] --> A["create_agent"]
-  A --> M["Gemini model"]
-  A --> T["Tools"]
-  M --> R["Agent response"]`,
+    diagram: `graph TD
+  Q[User message] --> A[create_agent]
+  A --> M[Gemini model]
+  A --> T[Tools]
+  M --> R[Agent response]`,
     messages: [
       {
         id: "lc-u1",
@@ -271,16 +271,16 @@ Starter code is in the Playground. LangChain blocks embedded preview — use Ope
     activeTab: "document",
     code: null,
     comparison: COMPARE_RESULT,
-    diagram: `flowchart TB
-  subgraph LC["LangChain 1.x"]
-    L1["create_agent"] --> L2["Gemini"]
-    L1 --> L3["Python tools"]
+    diagram: `graph TB
+  subgraph LC[LangChain]
+    L1[create_agent] --> L2[Gemini]
+    L1 --> L3[Python tools]
   end
-  subgraph ADK["Google ADK"]
-    A1["Agent"] --> A2["Gemini"]
-    A1 --> A3["Built-in tools"]
+  subgraph ADK[Google ADK]
+    A1[Agent] --> A2[Gemini]
+    A1 --> A3[Built-in tools]
   end
-  U["Same task: tool-using agent"] --> LC
+  U[Tool-using agent] --> LC
   U --> ADK`,
     messages: [
       {

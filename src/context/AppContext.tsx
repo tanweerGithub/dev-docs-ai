@@ -16,7 +16,6 @@ import {
   getStoredApiKey,
   setStoredApiKey,
 } from "@/lib/api-key-storage";
-import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
 import { fallbackResourceName } from "@/lib/page-title";
 import type {
   ArtifactMeta,
@@ -85,6 +84,7 @@ interface AppContextValue {
   addUrl: (url: string) => Promise<void>;
   addFile: (file: File) => void;
   removeResource: (id: string) => void;
+  clearAllResources: () => void;
   selectedId: string | null;
   selectResource: (id: string) => void;
   activeTab: CanvasTab;
@@ -230,30 +230,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
       demo.resources
     );
 
+    setActiveTab("document");
     setMessages(demo.messages);
-    const demoDiagram = sanitizeMermaidDiagram(demo.diagram);
-    setDiagram(demoDiagram);
-    setDiagramMeta(demoDiagram ? meta : null);
+    setDiagram(demo.diagram);
+    setDiagramMeta(demo.diagram ? meta : null);
 
     if (demo.comparison) {
       setComparison(demo.comparison);
       setComparisonMeta(meta);
       setCode(null);
       setCodeMeta(null);
-      setActiveTab("comparison");
     } else {
       setComparison(null);
       setComparisonMeta(null);
       setCode(demo.code);
       setCodeMeta(demo.code ? meta : null);
-      if (demoDiagram) {
-        setActiveTab("diagram");
-      } else if (demo.code) {
-        setActiveTab("playground");
-      } else {
-        setActiveTab(demo.activeTab);
-      }
     }
+  }, []);
+
+  const clearAllResources = useCallback(() => {
+    setResources((prev) => {
+      prev.forEach((r) => {
+        if (r.previewUrl) URL.revokeObjectURL(r.previewUrl);
+      });
+      return [];
+    });
+    setSelectedId(null);
   }, []);
 
   const removeResource = useCallback((id: string) => {
@@ -379,6 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addUrl,
       addFile,
       removeResource,
+      clearAllResources,
       selectedId,
       selectResource,
       activeTab,
@@ -401,6 +404,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addUrl,
       addFile,
       removeResource,
+      clearAllResources,
       selectedId,
       selectResource,
       activeTab,
