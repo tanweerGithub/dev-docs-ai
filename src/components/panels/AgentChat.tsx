@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
+  ChevronUp,
   FileText,
   Globe,
   Loader2,
@@ -14,15 +15,10 @@ import {
   X,
 } from "lucide-react";
 import { ChatMessageContent } from "@/components/shared/ChatMessageContent";
+import { buildChatSuggestions } from "@/lib/chat-suggestions";
 import { normalizeMessageCitations } from "@/lib/citations";
 import { useApp } from "@/context/AppContext";
 import type { ChatCitation, Resource } from "@/types";
-
-const STARTERS = [
-  "How do I create a multimodal prompt with images?",
-  "How do I build a simple agent with tools?",
-  "Compare LangChain vs Google ADK for building an agent",
-];
 
 type SpeechRecognitionCtor = new () => SpeechRecognition;
 
@@ -120,6 +116,7 @@ export function AgentChat() {
   const [mentionIndex, setMentionIndex] = useState(0);
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [startersOpen, setStartersOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
@@ -128,6 +125,13 @@ export function AgentChat() {
     () => !messages.some((m) => m.role === "user"),
     [messages]
   );
+
+  const suggestions = useMemo(
+    () => buildChatSuggestions(resources),
+    [resources]
+  );
+
+  const showTryAsking = showStarters && suggestions.length > 0;
 
   const scopedResources = useMemo(
     () =>
@@ -203,6 +207,7 @@ export function AgentChat() {
     if (!trimmed || isLoading) return;
     setInput("");
     setMentionOpen(false);
+    setStartersOpen(false);
     const ids = scopedIds ?? undefined;
     setScopedIds(null);
     await addMessage(trimmed, ids);
@@ -288,6 +293,10 @@ export function AgentChat() {
   useEffect(() => {
     return () => recognitionRef.current?.stop();
   }, []);
+
+  useEffect(() => {
+    if (resources.length === 0) setStartersOpen(false);
+  }, [resources.length]);
 
   return (
     <aside className="flex h-full w-[26rem] min-w-0 shrink-0 flex-col overflow-hidden border-l border-zinc-800 bg-zinc-950">
@@ -391,26 +400,41 @@ export function AgentChat() {
         <div ref={endRef} />
       </div>
 
-      {showStarters && (
-        <div className="space-y-2 border-t border-zinc-800 px-3 py-3">
-          <p className="text-xs font-medium text-zinc-500">Try asking</p>
-          <div className="flex flex-col gap-2">
-            {STARTERS.map((s) => (
-              <button
-                key={s}
-                onClick={() => send(s)}
-                disabled={isLoading}
-                className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-left text-sm leading-snug text-zinc-300 transition-colors hover:border-violet-500/40 hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-40"
-              >
-                {s}
-              </button>
-            ))}
+      <div className="relative border-t border-zinc-800">
+        {showTryAsking && (
+          <div className="border-b border-zinc-800/80 bg-zinc-950">
+            {startersOpen && (
+              <div className="space-y-1.5 border-b border-zinc-800/80 px-3 pb-2.5 pt-2.5">
+                {suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => void send(s)}
+                    disabled={isLoading}
+                    className="w-full rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-left text-sm leading-snug text-zinc-300 transition-colors hover:border-violet-500/40 hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-40"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setStartersOpen((o) => !o)}
+              className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-zinc-900/50"
+            >
+              <span className="text-xs font-medium text-zinc-500">
+                Try asking
+              </span>
+              <ChevronUp
+                className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${startersOpen ? "rotate-180" : ""}`}
+              />
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="relative border-t border-zinc-800 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+        <div className="p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
           <div className="min-w-0">
             <p className="text-xs font-medium text-zinc-300">Web search</p>
             <p className="text-[10px] leading-snug text-zinc-500">
@@ -557,6 +581,7 @@ export function AgentChat() {
               <Send className="h-4 w-4" />
             </button>
           </div>
+        </div>
         </div>
       </div>
     </aside>
