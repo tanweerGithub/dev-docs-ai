@@ -11,7 +11,7 @@ const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.5;
 const ZOOM_STEP = 0.15;
 
-export function DiagramView() {
+export function DiagramView({ isActive }: { isActive: boolean }) {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -27,11 +27,13 @@ export function DiagramView() {
   }, [cleanDiagram]);
 
   useEffect(() => {
-    if (!cleanDiagram || !containerRef.current) return;
+    if (!isActive || !cleanDiagram || !containerRef.current) return;
 
     let cancelled = false;
+    let frame = 0;
 
-    (async () => {
+    frame = requestAnimationFrame(() => {
+      void (async () => {
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
@@ -98,12 +100,14 @@ export function DiagramView() {
         setRenderError(message);
         if (containerRef.current) containerRef.current.innerHTML = "";
       }
-    })();
+      })();
+    });
 
     return () => {
       cancelled = true;
+      cancelAnimationFrame(frame);
     };
-  }, [cleanDiagram, isLight]);
+  }, [cleanDiagram, isLight, isActive]);
 
   const adjustZoom = (delta: number) => {
     setZoom((z) =>

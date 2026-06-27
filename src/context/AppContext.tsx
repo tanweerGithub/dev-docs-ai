@@ -230,7 +230,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       demo.resources
     );
 
-    setActiveTab(demo.activeTab);
     setMessages(demo.messages);
     const demoDiagram = sanitizeMermaidDiagram(demo.diagram);
     setDiagram(demoDiagram);
@@ -241,11 +240,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setComparisonMeta(meta);
       setCode(null);
       setCodeMeta(null);
+      setActiveTab("comparison");
     } else {
       setComparison(null);
       setComparisonMeta(null);
       setCode(demo.code);
       setCodeMeta(demo.code ? meta : null);
+      if (demoDiagram) {
+        setActiveTab("diagram");
+      } else if (demo.code) {
+        setActiveTab("playground");
+      } else {
+        setActiveTab(demo.activeTab);
+      }
     }
   }, []);
 

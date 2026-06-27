@@ -381,17 +381,20 @@ export function AgentChat() {
       </div>
 
       {messages.length <= 1 && (
-        <div className="flex flex-wrap gap-1.5 border-t border-zinc-800 px-3 py-2">
-          {STARTERS.map((s) => (
-            <button
-              key={s}
-              onClick={() => send(s)}
-              disabled={isLoading}
-              className="rounded-full border border-zinc-800 px-2.5 py-1 text-[10px] text-zinc-500 hover:border-zinc-700 hover:text-zinc-300 disabled:opacity-40"
-            >
-              {s}
-            </button>
-          ))}
+        <div className="space-y-2 border-t border-zinc-800 px-3 py-3">
+          <p className="text-xs font-medium text-zinc-500">Try asking</p>
+          <div className="flex flex-col gap-2">
+            {STARTERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => send(s)}
+                disabled={isLoading}
+                className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2.5 text-left text-sm leading-snug text-zinc-300 transition-colors hover:border-violet-500/40 hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-40"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
