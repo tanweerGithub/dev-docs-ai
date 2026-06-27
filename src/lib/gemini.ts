@@ -106,17 +106,20 @@ export async function researchWithGemini(
     }
   }
 
+  const urlResources = resources.filter((r) => r.type === "url" && r.url);
+  const useUrlTools = urlResources.length > 0;
+
   const body: Record<string, unknown> = {
     contents: [{ parts }],
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 8192,
-      responseMimeType: "application/json",
+      // Gemini rejects tools + responseMimeType together on 2.5-flash.
+      ...(useUrlTools ? {} : { responseMimeType: "application/json" }),
     },
   };
 
-  const urlResources = resources.filter((r) => r.type === "url" && r.url);
-  if (urlResources.length > 0) {
+  if (useUrlTools) {
     body.tools = [{ url_context: {} }, { google_search: {} }];
   }
 
