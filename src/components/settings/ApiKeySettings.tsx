@@ -2,11 +2,7 @@
 
 import { useState } from "react";
 import { KeyRound, X } from "lucide-react";
-import {
-  clearStoredApiKey,
-  maskApiKey,
-  setStoredApiKey,
-} from "@/lib/api-key-storage";
+import { maskApiKey } from "@/lib/api-key-storage";
 import { useApp } from "@/context/AppContext";
 
 export function ApiKeySettings() {
@@ -16,14 +12,12 @@ export function ApiKeySettings() {
 
   const handleSave = () => {
     if (!input.trim()) return;
-    setStoredApiKey(input);
-    setApiKey(input.trim());
+    setApiKey(input);
     setInput("");
     setOpen(false);
   };
 
   const handleClear = () => {
-    clearStoredApiKey();
     setApiKey(null);
     setInput("");
   };
@@ -71,11 +65,18 @@ export function ApiKeySettings() {
               .
             </p>
 
+            {apiKey && (
+              <p className="mb-2 text-[10px] text-emerald-400/90">
+                Saved: {maskApiKey(apiKey)} — paste a new key below to replace it
+              </p>
+            )}
+
             <input
               type="password"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="AIza..."
+              placeholder={apiKey ? "Paste new key to replace…" : "AIza..."}
+              autoComplete="off"
               className="mb-3 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
             />
 

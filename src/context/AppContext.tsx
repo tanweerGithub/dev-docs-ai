@@ -11,7 +11,11 @@ import {
 } from "react";
 import { DEMOS, type DemoId } from "@/data/demos";
 import { WELCOME_MESSAGES } from "@/data/initial";
-import { getStoredApiKey } from "@/lib/api-key-storage";
+import {
+  clearStoredApiKey,
+  getStoredApiKey,
+  setStoredApiKey,
+} from "@/lib/api-key-storage";
 import { fallbackResourceName } from "@/lib/page-title";
 import type {
   ArtifactMeta,
@@ -89,11 +93,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
   );
   const [diagram, setDiagram] = useState<string | null>(null);
   const [diagramMeta, setDiagramMeta] = useState<ArtifactMeta | null>(null);
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKey, setApiKeyState] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : getStoredApiKey()
+  );
+
+  const setApiKey = useCallback((key: string | null) => {
+    const trimmed = key?.trim() ?? "";
+    if (trimmed) {
+      setStoredApiKey(trimmed);
+      setApiKeyState(trimmed);
+    } else {
+      clearStoredApiKey();
+      setApiKeyState(null);
+    }
+  }, []);
 
   useEffect(() => {
-    const stored = getStoredApiKey();
-    if (stored) setApiKey(stored);
+    const syncFromStorage = () => {
+      setApiKeyState(getStoredApiKey());
+    };
+    syncFromStorage();
+    window.addEventListener("focus", syncFromStorage);
+    return () => window.removeEventListener("focus", syncFromStorage);
   }, []);
 
   const selectResource = useCallback((id: string) => {
@@ -235,13 +256,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ? "active"
             : "all";
 
+        const effectiveApiKey = (apiKey ?? getStoredApiKey())?.trim() || null;
+        if (!effectiveApiKey) {
+          throw new Error("Add your Gemini API key to start researching");
+        }
+
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: content,
             resources: scoped.map(({ previewUrl, ...r }) => r),
-            apiKey,
+            apiKey: effectiveApiKey,
             scope,
           }),
         });
