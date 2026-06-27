@@ -1,5 +1,8 @@
 import { enrichCitations, type RawCitation } from "@/lib/citations";
-import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
+import {
+  extractMermaidFromMarkdown,
+  sanitizeMermaidDiagram,
+} from "@/lib/mermaid-sanitize";
 import type { ChatCitation, ResearchResponse, Resource } from "@/types";
 
 const MODEL = "gemini-2.5-flash";
@@ -27,6 +30,12 @@ function asksForCode(message: string): boolean {
   );
 }
 
+function asksForDiagram(message: string): boolean {
+  return /\b(diagram|mermaid|flowchart|architecture|draw\s+(?:a|an)|visuali[sz]e)\b/i.test(
+    message
+  );
+}
+
 function buildPrompt(
   message: string,
   resources: Resource[],
@@ -43,6 +52,7 @@ function buildPrompt(
     .join("\n");
 
   const codeRequest = asksForCode(message);
+  const diagramRequest = asksForDiagram(message);
   const scopedSingle = scope === "active" && resources.length === 1;
   const scopedNote = scopedSingle
     ? `\nScoped query (@): the user limited this question to ONE source. Use url_context to read that URL in full. ${
@@ -111,7 +121,11 @@ ${
 Other rules:
 - LangChain 1.x: create_agent only. Google ADK: Agent + run().
 - Comparison: LangChain first, ADK second, suggestedTab "comparison", code null.
-- Diagrams: flowchart TD, valid mermaid, suggestedTab "diagram".`;
+${
+  diagramRequest
+    ? `- DIAGRAM REQUEST: put the full mermaid source in the "diagram" field (raw mermaid, no fences). Use flowchart TD or graph LR. Set suggestedTab "diagram", code null. The answer may summarize the diagram in prose — do NOT only embed mermaid in the answer.`
+    : "- Diagrams: flowchart TD, valid mermaid in diagram field, suggestedTab \"diagram\"."
+}`;
 }
 
 function extractJsonFromText(text: string): string | null {
@@ -188,8 +202,9 @@ function normalizeParsedResponse(
   parsed: ParsedResearchResponse
 ): ParsedResearchResponse {
   const answer = coerceToString(parsed.answer) ?? "";
-
-  let diagram = coerceToString(parsed.diagram);
+  let diagram =
+    coerceToString(parsed.diagram) ??
+    extractMermaidFromMarkdown(answer);
   let code = parsed.code as unknown;
 
   if (!diagram && code && typeof code === "object") {
@@ -489,15 +504,25 @@ export async function researchWithGemini(
     citations = citations.filter((c) => c.source !== "web");
   }
 
-  const diagram = sanitizeMermaidDiagram(parsed.diagram);
+  const diagram =
+    sanitizeMermaidDiagram(parsed.diagram) ??
+    sanitizeMermaidDiagram(extractMermaidFromMarkdown(parsed.answer));
+
+  const diagramRequest = asksForDiagram(message);
+  const suggestedTab =
+    diagram && (!parsed.suggestedTab || diagramRequest)
+      ? "diagram"
+      : (parsed.suggestedTab ?? null);
 
   return {
     answer: parsed.answer,
     citations,
-    code: parsed.comparison ? null : (parsed.code ?? null),
+    code:
+      parsed.comparison || (diagram && diagramRequest)
+        ? null
+        : (parsed.code ?? null),
     comparison: parsed.comparison ?? null,
     diagram,
-    suggestedTab:
-      diagram && !parsed.suggestedTab ? "diagram" : (parsed.suggestedTab ?? null),
+    suggestedTab,
   };
 }

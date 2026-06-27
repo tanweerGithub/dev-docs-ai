@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { Network } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertCircle, Network } from "lucide-react";
 import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
 import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
@@ -10,39 +10,51 @@ export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!diagram || !containerRef.current) return;
 
     let cancelled = false;
+    setRenderError(null);
 
     (async () => {
-      const mermaid = (await import("mermaid")).default;
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: isLight ? "neutral" : "dark",
-        themeVariables: isLight
-          ? {
-              primaryColor: "#dbeafe",
-              primaryTextColor: "#18181b",
-              lineColor: "#a1a1aa",
-              secondaryColor: "#f4f4f5",
-              tertiaryColor: "#e4e4e7",
-            }
-          : {
-              primaryColor: "#3b82f6",
-              primaryTextColor: "#e4e4e7",
-              lineColor: "#52525b",
-              secondaryColor: "#18181b",
-              tertiaryColor: "#27272a",
-            },
-      });
+      try {
+        const mermaid = (await import("mermaid")).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: isLight ? "neutral" : "dark",
+          themeVariables: isLight
+            ? {
+                primaryColor: "#dbeafe",
+                primaryTextColor: "#18181b",
+                lineColor: "#a1a1aa",
+                secondaryColor: "#f4f4f5",
+                tertiaryColor: "#e4e4e7",
+              }
+            : {
+                primaryColor: "#3b82f6",
+                primaryTextColor: "#e4e4e7",
+                lineColor: "#52525b",
+                secondaryColor: "#18181b",
+                tertiaryColor: "#27272a",
+              },
+        });
 
-      if (cancelled || !containerRef.current) return;
+        if (cancelled || !containerRef.current) return;
 
-      const id = `mmd-${Date.now()}`;
-      const { svg } = await mermaid.render(id, diagram);
-      containerRef.current.innerHTML = svg;
+        const id = `mmd-${Date.now()}`;
+        const { svg } = await mermaid.render(id, diagram);
+        if (!cancelled && containerRef.current) {
+          containerRef.current.innerHTML = svg;
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRenderError(
+            err instanceof Error ? err.message : "Failed to render diagram"
+          );
+        }
+      }
     })();
 
     return () => {
@@ -69,10 +81,21 @@ export function DiagramView() {
       <div className="border-b border-zinc-800 px-4 py-2">
         <span className="text-xs text-zinc-500">Research diagram</span>
       </div>
-      <div
-        ref={containerRef}
-        className="flex flex-1 items-center justify-center overflow-auto p-8 [&_svg]:max-h-full [&_svg]:max-w-full"
-      />
+      {renderError ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
+          <AlertCircle className="h-8 w-8 text-amber-400" />
+          <p className="text-sm text-zinc-400">Could not render this diagram</p>
+          <p className="max-w-md text-xs text-zinc-600">{renderError}</p>
+          <pre className="max-h-40 max-w-full overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-left font-mono text-[10px] text-zinc-500">
+            {diagram}
+          </pre>
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="flex flex-1 items-center justify-center overflow-auto p-8 [&_svg]:max-h-full [&_svg]:max-w-full"
+        />
+      )}
     </div>
   );
 }

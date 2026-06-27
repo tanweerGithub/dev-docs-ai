@@ -364,10 +364,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setActiveTab(data.suggestedTab);
         } else if (data.comparison) {
           setActiveTab("comparison");
-        } else if (data.code) {
-          setActiveTab("playground");
         } else if (data.diagram) {
           setActiveTab("diagram");
+        } else if (data.code) {
+          setActiveTab("playground");
         }
 
         setMessages((prev) => [
