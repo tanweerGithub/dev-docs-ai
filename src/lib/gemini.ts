@@ -123,8 +123,8 @@ Other rules:
 - Comparison: LangChain first, ADK second, suggestedTab "comparison", code null.
 ${
   diagramRequest
-    ? `- DIAGRAM REQUEST: put the full mermaid source in the "diagram" field (raw mermaid, no fences). Use flowchart TD or graph LR. Set suggestedTab "diagram", code null. The answer may summarize the diagram in prose — do NOT only embed mermaid in the answer.`
-    : "- Diagrams: flowchart TD, valid mermaid in diagram field, suggestedTab \"diagram\"."
+    ? `- DIAGRAM REQUEST: put the full mermaid source in the "diagram" field (raw mermaid, no fences). Use flowchart TD or graph LR. Quote labels with special characters: D["Model (LLM)"], not D[Model (LLM)]. Set suggestedTab "diagram", code null. The answer may summarize the diagram in prose — do NOT only embed mermaid in the answer.`
+    : "- Diagrams: flowchart TD, valid mermaid in diagram field, quote labels with parentheses, suggestedTab \"diagram\"."
 }`;
 }
 

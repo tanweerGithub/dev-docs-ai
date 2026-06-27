@@ -5,6 +5,7 @@ import { AlertCircle, Network } from "lucide-react";
 import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
 import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
+import { repairMermaidSyntax } from "@/lib/mermaid-sanitize";
 
 export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
@@ -44,9 +45,28 @@ export function DiagramView() {
         if (cancelled || !containerRef.current) return;
 
         const id = `mmd-${Date.now()}`;
-        const { svg } = await mermaid.render(id, diagram);
-        if (!cancelled && containerRef.current) {
-          containerRef.current.innerHTML = svg;
+        const sources = [diagram, repairMermaidSyntax(diagram)];
+        let lastError: unknown = null;
+
+        for (const source of sources) {
+          try {
+            const { svg } = await mermaid.render(`${id}-${source.length}`, source);
+            if (!cancelled && containerRef.current) {
+              containerRef.current.innerHTML = svg;
+            }
+            lastError = null;
+            break;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+
+        if (lastError && !cancelled) {
+          setRenderError(
+            lastError instanceof Error
+              ? lastError.message
+              : "Failed to render diagram"
+          );
         }
       } catch (err) {
         if (!cancelled) {

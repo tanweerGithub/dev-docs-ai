@@ -51,16 +51,64 @@ export function extractMermaidFromMarkdown(text: string): string | null {
   return MERMAID_START.test(candidate) ? candidate : null;
 }
 
-/** Strip markdown fences only — avoid rewriting diagram syntax. */
-export function sanitizeMermaidDiagram(raw: unknown): string | null {
-  const rawText = coerceToString(raw);
-  if (!rawText?.trim()) return null;
-
-  const text = rawText
-    .trim()
+/** Quote labels that contain characters which break flowchart parsing. */
+export function repairMermaidSyntax(diagram: string): string {
+  let text = diagram
     .replace(/^```(?:mermaid)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 
-  return text || null;
+  // [Model (LLM)] → ["Model (LLM)"]
+  text = text.replace(
+    /([\w-]+)\[([^\]"\n]+)\]/g,
+    (match, id: string, label: string) => {
+      const trimmed = label.trim();
+      if (/[()/:;,]/.test(trimmed)) {
+        const escaped = trimmed.replace(/"/g, '\\"');
+        return `${id}["${escaped}"]`;
+      }
+      return match;
+    }
+  );
+
+  // (Label (nested)) → ("Label (nested)") for rounded nodes
+  text = text.replace(
+    /([\w-]+)\(([^)"\n]+)\)/g,
+    (match, id: string, label: string) => {
+      const trimmed = label.trim();
+      if (/[()]/.test(trimmed)) {
+        const escaped = trimmed.replace(/"/g, '\\"');
+        return `${id}("${escaped}")`;
+      }
+      return match;
+    }
+  );
+
+  // subgraph Agent Types → subgraph "Agent Types"
+  text = text.replace(
+    /^(\s*subgraph\s+)([^"\n\[\]]+)$/gm,
+    (match, prefix: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed || trimmed.startsWith('"')) return match;
+      if (/\s/.test(trimmed) || /[()]/.test(trimmed)) {
+        const escaped = trimmed.replace(/"/g, '\\"');
+        return `${prefix}"${escaped}"`;
+      }
+      return match;
+    }
+  );
+
+  // Trailing semicolons can confuse the parser on some diagrams
+  text = text.replace(/;(\s*)$/gm, "$1");
+
+  return text;
+}
+
+/** Strip markdown fences and repair common syntax issues. */
+export function sanitizeMermaidDiagram(raw: unknown): string | null {
+  const rawText = coerceToString(raw);
+  if (!rawText?.trim()) return null;
+
+  const repaired = repairMermaidSyntax(rawText.trim());
+  return repaired || null;
 }
