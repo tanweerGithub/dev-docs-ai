@@ -1,4 +1,5 @@
 import { enrichCitations, type RawCitation } from "@/lib/citations";
+import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
 import type { ChatCitation, ResearchResponse, Resource } from "@/types";
 
 const MODEL = "gemini-2.5-flash";
@@ -36,13 +37,14 @@ User question: ${message}
 
 Respond with JSON only:
 {
-  "answer": "Clear research answer in markdown. Reference sources inline like [1] or by name. Prefer facts from the user's sources above.",
+  "answer": "Clear research answer in markdown. Reference sources inline like [1] or [1 p.12] for PDFs. Prefer facts from the user's sources above.",
   "citations": [
     {
       "sourceIndex": 1,
       "label": "Exact source name from the list above",
       "excerpt": "Short quoted or paraphrased point from that source",
       "url": "URL if source is a url type, else null",
+      "page": 12,
       "source": "document"
     }
   ],
@@ -54,10 +56,17 @@ Respond with JSON only:
 
 Citation rules (critical):
 - ALWAYS cite user's uploaded sources first when used. Each citation must use sourceIndex matching [1], [2], etc.
+- For PDFs and uploaded files, include page when known (page field) and reference inline as [1 p.12] in the answer.
 - Set source to "document" for user sources. Include their url field when the source has a URL.
 - Only add source: "web" citations for information NOT in user sources — include a real https url from url_context/search.
 - Every factual claim in answer should trace to a citation from documents when possible.
 - Do not invent sourceIndex values — only use indices from the source list.
+
+Mermaid diagram rules (when user asks for a diagram):
+- Set suggestedTab to "diagram" and provide a valid diagram string.
+- Use flowchart TD or graph TD only. No markdown fences or backticks inside diagram.
+- Quote labels with special characters: A["Step 1"], subgraph G["Group name"]
+- Avoid parentheses in unquoted labels. Keep node IDs simple (A, B, C1).
 
 Research rules:
 - Ground answers primarily in provided documents/URLs/files via url_context and inline files.
@@ -152,12 +161,15 @@ export async function researchWithGemini(
     resources
   );
 
+  const diagram = sanitizeMermaidDiagram(parsed.diagram);
+
   return {
     answer: parsed.answer,
     citations,
     code: parsed.comparison ? null : (parsed.code ?? null),
     comparison: parsed.comparison ?? null,
-    diagram: parsed.diagram ?? null,
-    suggestedTab: parsed.suggestedTab ?? null,
+    diagram,
+    suggestedTab:
+      diagram && !parsed.suggestedTab ? "diagram" : (parsed.suggestedTab ?? null),
   };
 }

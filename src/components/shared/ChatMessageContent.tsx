@@ -61,6 +61,17 @@ function resolveCitationTarget(
   return { resource, citation };
 }
 
+const INLINE_CITATION_PATTERN = /(\[\d+(?:\s*,?\s*p\.?\s*\d+)?\])/gi;
+
+function formatCitationChip(
+  sourceIndex: number,
+  page: number | undefined,
+  label: string
+) {
+  const pageLabel = page ? ` · p.${page}` : "";
+  return `[${sourceIndex}${pageLabel}] ${label}`;
+}
+
 function renderBlock(
   content: string,
   resources: Resource[],
@@ -68,22 +79,30 @@ function renderBlock(
   onOpenDocument: (resourceId: string) => void,
   blockKey: string
 ): ReactNode {
-  const parts = content.split(/(\[\d+\])/g);
+  const parts = content.split(INLINE_CITATION_PATTERN);
 
   return parts.map((part, i) => {
-    const refMatch = part.match(/^\[(\d+)\]$/);
+    const refMatch = part.match(/^\[(\d+)(?:\s*,?\s*p\.?\s*(\d+))?\]$/i);
     if (refMatch) {
       const idx = Number(refMatch[1]) - 1;
+      const inlinePage = refMatch[2] ? Number(refMatch[2]) : undefined;
       const { resource, citation } = resolveCitationTarget(
         idx,
         resources,
         citations
       );
+      const page = inlinePage ?? citation?.page;
       const label =
         resource?.name ?? citation?.label ?? `Source ${idx + 1}`;
-      const title = citation?.excerpt
-        ? `${label} — ${citation.excerpt}`
-        : label;
+      const title = [
+        label,
+        page ? `Page ${page}` : null,
+        citation?.excerpt,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+      const chip = formatCitationChip(Number(refMatch[1]), page, label);
 
       if (resource?.id) {
         return (
@@ -94,7 +113,7 @@ function renderBlock(
             onClick={() => onOpenDocument(resource.id)}
             className="mx-0.5 inline-flex cursor-pointer items-center rounded bg-emerald-500/15 px-1.5 py-0.5 text-[0.85em] font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition-colors hover:bg-emerald-500/25 hover:text-emerald-200"
           >
-            [{refMatch[1]}] {label}
+            {chip}
           </button>
         );
       }
@@ -109,7 +128,7 @@ function renderBlock(
             title={title}
             className="mx-0.5 inline-flex items-center rounded bg-emerald-500/15 px-1.5 py-0.5 text-[0.85em] font-medium text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 hover:text-emerald-200"
           >
-            [{refMatch[1]}] {label}
+            {chip}
           </a>
         );
       }
@@ -120,7 +139,7 @@ function renderBlock(
           title={title}
           className="mx-0.5 inline-flex items-center rounded bg-zinc-800 px-1.5 py-0.5 text-[0.85em] font-medium text-zinc-400"
         >
-          [{refMatch[1]}] {label}
+          {chip}
         </span>
       );
     }

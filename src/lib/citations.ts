@@ -5,6 +5,7 @@ export interface RawCitation {
   label: string;
   excerpt?: string;
   url?: string | null;
+  page?: number | null;
   source?: "document" | "web";
 }
 
@@ -56,6 +57,9 @@ export function enrichCitations(
 
     const isWeb = item.source === "web" && !resource;
 
+    const page =
+      typeof item.page === "number" && item.page > 0 ? item.page : undefined;
+
     return {
       label: resource?.name ?? item.label,
       excerpt: item.excerpt,
@@ -63,6 +67,7 @@ export function enrichCitations(
         ? (item.url ?? undefined)
         : (resource?.url ?? item.url ?? undefined),
       resourceId: resource?.id,
+      page,
       source: isWeb ? "web" : "document",
     };
   });

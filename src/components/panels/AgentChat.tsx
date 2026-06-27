@@ -53,6 +53,9 @@ function CitationLinks({
         const text = (
           <>
             <span className="font-medium">{c.label}</span>
+            {c.page && (
+              <span className="text-zinc-500"> · p.{c.page}</span>
+            )}
             {c.excerpt && (
               <span className="text-zinc-500"> — {c.excerpt}</span>
             )}
@@ -460,7 +463,7 @@ export function AgentChat() {
           </div>
         )}
 
-        <div className="flex items-end gap-2">
+        <div className="relative rounded-2xl border border-zinc-700 bg-zinc-900 shadow-sm focus-within:border-violet-500/70 focus-within:ring-1 focus-within:ring-violet-500/30">
           <textarea
             ref={inputRef}
             value={input}
@@ -477,35 +480,38 @@ export function AgentChat() {
                     : "Ask about your documents..."
                 : "Add Gemini API key first"
             }
-            className="min-h-[4.5rem] max-h-[12.5rem] min-w-0 flex-1 resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none disabled:opacity-50"
+            className="min-h-[5rem] max-h-[12.5rem] w-full resize-none rounded-2xl border-0 bg-transparent px-4 py-3 pr-24 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:outline-none disabled:opacity-50"
           />
-          {speechSupported && (
+          <div className="absolute bottom-2.5 right-2.5 flex items-center gap-1">
+            {speechSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={isLoading}
+                title={listening ? "Stop listening" : "Voice input"}
+                className={`rounded-full p-2 transition-colors disabled:opacity-40 ${
+                  listening
+                    ? "bg-violet-500/20 text-violet-400"
+                    : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                }`}
+              >
+                {listening ? (
+                  <MicOff className="h-4 w-4" />
+                ) : (
+                  <Mic className="h-4 w-4" />
+                )}
+              </button>
+            )}
             <button
               type="button"
-              onClick={toggleMic}
-              disabled={isLoading}
-              title={listening ? "Stop listening" : "Voice input"}
-              className={`rounded-lg border px-3 py-2.5 transition-colors disabled:opacity-40 ${
-                listening
-                  ? "border-violet-500/50 bg-violet-500/20 text-violet-400"
-                  : "border-zinc-700 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
-              }`}
+              onClick={() => send(input)}
+              disabled={!input.trim() || isLoading}
+              className="rounded-full bg-violet-600 p-2 text-white transition-colors hover:bg-violet-500 disabled:opacity-40"
+              aria-label="Send message"
             >
-              {listening ? (
-                <MicOff className="h-4 w-4" />
-              ) : (
-                <Mic className="h-4 w-4" />
-              )}
+              <Send className="h-4 w-4" />
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => send(input)}
-            disabled={!input.trim() || isLoading}
-            className="rounded-lg bg-violet-600 px-3 py-2.5 text-white hover:bg-violet-500 disabled:opacity-40"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          </div>
         </div>
       </div>
     </aside>

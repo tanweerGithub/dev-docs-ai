@@ -23,6 +23,7 @@ export interface ChatCitation {
   excerpt?: string;
   url?: string;
   resourceId?: string;
+  page?: number;
   source: "document" | "web";
 }
 

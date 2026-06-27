@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Network, ZoomIn, ZoomOut } from "lucide-react";
+import { AlertCircle, Network, ZoomIn, ZoomOut } from "lucide-react";
 import { ArtifactBanner } from "@/components/shared/ArtifactBanner";
+import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
 import { useTheme } from "@/context/ThemeContext";
 import { useApp } from "@/context/AppContext";
 
@@ -14,80 +15,95 @@ export function DiagramView() {
   const { diagram, diagramMeta } = useApp();
   const { isLight } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  const [renderError, setRenderError] = useState<string | null>(null);
+
+  const cleanDiagram = sanitizeMermaidDiagram(diagram);
 
   useEffect(() => {
-    if (!diagram) return;
+    if (!cleanDiagram) return;
     setZoom(1);
-  }, [diagram]);
+    setRenderError(null);
+  }, [cleanDiagram]);
 
   useEffect(() => {
-    if (!diagram || !containerRef.current) return;
+    if (!cleanDiagram || !containerRef.current) return;
 
     let cancelled = false;
 
     (async () => {
-      const mermaid = (await import("mermaid")).default;
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: "base",
-        themeVariables: isLight
-          ? {
-              darkMode: false,
-              background: "#fafafa",
-              primaryColor: "#dbeafe",
-              primaryTextColor: "#18181b",
-              primaryBorderColor: "#a1a1aa",
-              lineColor: "#71717a",
-              secondaryColor: "#f4f4f5",
-              tertiaryColor: "#e4e4e7",
-              textColor: "#18181b",
-              mainBkg: "#fafafa",
-              nodeBorder: "#a1a1aa",
-              clusterBkg: "#f4f4f5",
-              titleColor: "#18181b",
-              edgeLabelBackground: "#fafafa",
-            }
-          : {
-              darkMode: true,
-              background: "#09090b",
-              primaryColor: "#1e3a5f",
-              primaryTextColor: "#f4f4f5",
-              primaryBorderColor: "#60a5fa",
-              lineColor: "#a1a1aa",
-              secondaryColor: "#18181b",
-              tertiaryColor: "#27272a",
-              textColor: "#f4f4f5",
-              mainBkg: "#18181b",
-              nodeBorder: "#60a5fa",
-              clusterBkg: "#27272a",
-              titleColor: "#f4f4f5",
-              edgeLabelBackground: "#18181b",
-              fontSize: "15px",
-            },
-      });
+      try {
+        const mermaid = (await import("mermaid")).default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "base",
+          securityLevel: "loose",
+          themeVariables: isLight
+            ? {
+                darkMode: false,
+                background: "#fafafa",
+                primaryColor: "#dbeafe",
+                primaryTextColor: "#18181b",
+                primaryBorderColor: "#a1a1aa",
+                lineColor: "#71717a",
+                secondaryColor: "#f4f4f5",
+                tertiaryColor: "#e4e4e7",
+                textColor: "#18181b",
+                mainBkg: "#fafafa",
+                nodeBorder: "#a1a1aa",
+                clusterBkg: "#f4f4f5",
+                titleColor: "#18181b",
+                edgeLabelBackground: "#fafafa",
+              }
+            : {
+                darkMode: true,
+                background: "#09090b",
+                primaryColor: "#1e3a5f",
+                primaryTextColor: "#f4f4f5",
+                primaryBorderColor: "#60a5fa",
+                lineColor: "#a1a1aa",
+                secondaryColor: "#18181b",
+                tertiaryColor: "#27272a",
+                textColor: "#f4f4f5",
+                mainBkg: "#18181b",
+                nodeBorder: "#60a5fa",
+                clusterBkg: "#27272a",
+                titleColor: "#f4f4f5",
+                edgeLabelBackground: "#18181b",
+                fontSize: "15px",
+              },
+        });
 
-      if (cancelled || !containerRef.current) return;
+        if (cancelled || !containerRef.current) return;
 
-      const id = `mmd-${Date.now()}`;
-      const { svg } = await mermaid.render(id, diagram);
-      containerRef.current.innerHTML = svg;
+        const id = `mmd-${Date.now()}`;
+        const { svg } = await mermaid.render(id, cleanDiagram);
+        if (cancelled || !containerRef.current) return;
 
-      const svgEl = containerRef.current.querySelector("svg");
-      if (svgEl) {
-        svgEl.removeAttribute("height");
-        svgEl.removeAttribute("width");
-        svgEl.style.maxWidth = "none";
-        svgEl.style.height = "auto";
-        svgEl.style.minWidth = "max-content";
+        containerRef.current.innerHTML = svg;
+        setRenderError(null);
+
+        const svgEl = containerRef.current.querySelector("svg");
+        if (svgEl) {
+          svgEl.removeAttribute("height");
+          svgEl.removeAttribute("width");
+          svgEl.style.maxWidth = "none";
+          svgEl.style.height = "auto";
+          svgEl.style.minWidth = "max-content";
+        }
+      } catch (err) {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : "Could not render diagram";
+        setRenderError(message);
+        if (containerRef.current) containerRef.current.innerHTML = "";
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [diagram, isLight]);
+  }, [cleanDiagram, isLight]);
 
   const adjustZoom = (delta: number) => {
     setZoom((z) =>
@@ -95,7 +111,7 @@ export function DiagramView() {
     );
   };
 
-  if (!diagram) {
+  if (!cleanDiagram) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <Network className="h-10 w-10 text-zinc-700" />
@@ -137,8 +153,18 @@ export function DiagramView() {
           </button>
         </div>
       </div>
+
+      {renderError && (
+        <div className="flex items-start gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Diagram could not be rendered</p>
+            <p className="mt-1 text-amber-200/80">{renderError}</p>
+          </div>
+        </div>
+      )}
+
       <div
-        ref={scrollRef}
         className={`diagram-scroll min-h-0 flex-1 overflow-auto p-6 ${
           isLight ? "bg-zinc-50" : "bg-zinc-950"
         }`}

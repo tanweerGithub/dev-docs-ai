@@ -16,6 +16,7 @@ import {
   getStoredApiKey,
   setStoredApiKey,
 } from "@/lib/api-key-storage";
+import { sanitizeMermaidDiagram } from "@/lib/mermaid-sanitize";
 import { fallbackResourceName } from "@/lib/page-title";
 import type {
   ArtifactMeta,
@@ -39,6 +40,31 @@ const ACCEPTED_FILE_TYPES = new Set([
   "text/html",
   "text/csv",
 ]);
+
+function resourceKey(r: Resource): string {
+  if (r.url) return `url:${r.url}`;
+  return `file:${r.name}:${r.mimeType ?? ""}`;
+}
+
+function mergeDemoResources(
+  existing: Resource[],
+  incoming: Resource[]
+): { resources: Resource[]; selectedId: string | null } {
+  const seen = new Set(existing.map(resourceKey));
+  const added: Resource[] = [];
+
+  for (const resource of incoming) {
+    const key = resourceKey(resource);
+    if (seen.has(key)) continue;
+    const id = `demo-${Date.now()}-${resource.id}`;
+    added.push({ ...resource, id, addedAt: new Date() });
+    seen.add(key);
+  }
+
+  const resources = [...added, ...existing];
+  const selectedId = added[0]?.id ?? existing[0]?.id ?? null;
+  return { resources, selectedId };
+}
 
 function buildArtifactMeta(
   query: string,
@@ -191,17 +217,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const demo = DEMOS[id];
     if (!demo) return;
 
+    setResources((prev) => {
+      const merged = mergeDemoResources(prev, demo.resources);
+      const primaryKey = resourceKey(demo.resources[0]);
+      const primary = merged.resources.find((r) => resourceKey(r) === primaryKey);
+      setSelectedId(primary?.id ?? merged.selectedId);
+      return merged.resources;
+    });
+
     const meta = buildArtifactMeta(
       demo.messages.find((m) => m.role === "user")?.content ?? demo.label,
       demo.resources
     );
 
-    setResources(demo.resources);
-    setSelectedId(demo.selectedId);
-    setActiveTab("document");
+    setActiveTab(demo.activeTab);
     setMessages(demo.messages);
-    setDiagram(demo.diagram);
-    setDiagramMeta(demo.diagram ? meta : null);
+    const demoDiagram = sanitizeMermaidDiagram(demo.diagram);
+    setDiagram(demoDiagram);
+    setDiagramMeta(demoDiagram ? meta : null);
 
     if (demo.comparison) {
       setComparison(demo.comparison);
