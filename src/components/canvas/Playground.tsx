@@ -34,10 +34,15 @@ export function Playground() {
     if (!code) return;
     const result = openInColab(code.code, code.language);
     if (result.mode === "clipboard") {
-      setColabHint("Code copied — paste into the Colab cell that opens.");
+      setColabHint("Code copied — paste into the new Colab notebook.");
       setTimeout(() => setColabHint(null), 5000);
+    } else if (window.location.hostname === "localhost") {
+      setColabHint(
+        "Colab cannot fetch localhost — deploy to Vercel or copy code manually."
+      );
+      setTimeout(() => setColabHint(null), 6000);
     } else {
-      setColabHint("Opening Google Colab with your notebook…");
+      setColabHint("Opening Colab with your code in a new notebook…");
       setTimeout(() => setColabHint(null), 4000);
     }
   };

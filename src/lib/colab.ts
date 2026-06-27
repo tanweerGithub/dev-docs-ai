@@ -53,7 +53,7 @@ export function buildColabNotebookUrl(code: string, language: string): string {
     code: encodeColabPayload(code),
     lang: language,
   });
-  const notebookUrl = `${origin}/api/colab?${params.toString()}`;
+  const notebookUrl = `${origin}/api/colab/export.ipynb?${params.toString()}`;
   return `https://colab.research.google.com/#notebookUrl=${encodeURIComponent(notebookUrl)}`;
 }
 

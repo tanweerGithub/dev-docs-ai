@@ -124,6 +124,11 @@ export function AgentChat() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
+  const showStarters = useMemo(
+    () => !messages.some((m) => m.role === "user"),
+    [messages]
+  );
+
   const scopedResources = useMemo(
     () =>
       scopedIds
@@ -386,7 +391,7 @@ export function AgentChat() {
         <div ref={endRef} />
       </div>
 
-      {messages.length <= 1 && (
+      {showStarters && (
         <div className="space-y-2 border-t border-zinc-800 px-3 py-3">
           <p className="text-xs font-medium text-zinc-500">Try asking</p>
           <div className="flex flex-col gap-2">
