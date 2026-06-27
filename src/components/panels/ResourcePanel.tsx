@@ -55,23 +55,10 @@ export function ResourcePanel() {
   return (
     <aside className="relative flex h-full w-80 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
       <div className="border-b border-zinc-800 px-4 py-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Sources</h2>
-            <p className="mt-1 text-xs text-zinc-500">
-              Documentation links or uploaded files
-            </p>
-          </div>
-          {resources.length > 0 && (
-            <button
-              type="button"
-              onClick={clearAllResources}
-              className="shrink-0 rounded-md border border-zinc-700 px-2 py-1 text-[10px] font-medium text-zinc-400 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
+        <h2 className="text-sm font-semibold text-zinc-100">Sources</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Documentation links or uploaded files
+        </p>
       </div>
 
       <div className="space-y-3 border-b border-zinc-800 p-3">
@@ -136,9 +123,20 @@ export function ResourcePanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-14">
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-          Your sources ({resources.length})
-        </p>
+        <div className="mb-2 flex items-center gap-2">
+          {resources.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAllResources}
+              className="shrink-0 rounded-md border border-zinc-700 px-2 py-0.5 text-[10px] font-medium text-zinc-400 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-300"
+            >
+              Clear all
+            </button>
+          )}
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+            Your sources ({resources.length})
+          </p>
+        </div>
         {resources.length === 0 ? (
           <p className="py-6 text-center text-xs text-zinc-600">
             Add a link, upload files, or try a demo below

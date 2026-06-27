@@ -270,6 +270,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return [];
     });
     setSelectedId(null);
+    setActiveTab("document");
+    setMessages(WELCOME_MESSAGES);
+    setCode(null);
+    setCodeMeta(null);
+    setComparison(null);
+    setComparisonMeta(null);
+    setDiagram(null);
+    setDiagramMeta(null);
   }, []);
 
   const removeResource = useCallback((id: string) => {
