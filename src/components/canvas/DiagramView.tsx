@@ -19,7 +19,9 @@ import { applyLocalMermaidRepairs } from "@/lib/mermaid-sanitize";
 
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 3;
-const ZOOM_STEP = 0.15;
+const BUTTON_ZOOM_STEP = 0.12;
+const WHEEL_ZOOM_SENSITIVITY = 0.0012;
+const WHEEL_ZOOM_MAX_DELTA = 0.04;
 const VIEWPORT_PADDING = 40;
 
 function clampZoom(value: number) {
@@ -271,7 +273,12 @@ export function DiagramView() {
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
-      zoomAtCenter(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+      const raw = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
+      const delta =
+        Math.sign(raw) *
+        Math.min(Math.abs(raw), WHEEL_ZOOM_MAX_DELTA);
+      if (Math.abs(delta) < 0.002) return;
+      zoomAtCenter(delta);
     },
     [zoomAtCenter]
   );
@@ -333,7 +340,7 @@ export function DiagramView() {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => zoomAtCenter(-ZOOM_STEP)}
+              onClick={() => zoomAtCenter(-BUTTON_ZOOM_STEP)}
               className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
               title="Zoom out"
               aria-label="Zoom out"
@@ -345,7 +352,7 @@ export function DiagramView() {
             </span>
             <button
               type="button"
-              onClick={() => zoomAtCenter(ZOOM_STEP)}
+              onClick={() => zoomAtCenter(BUTTON_ZOOM_STEP)}
               className="rounded p-1.5 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
               title="Zoom in"
               aria-label="Zoom in"
