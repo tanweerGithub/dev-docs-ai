@@ -18,7 +18,11 @@ const GEMINI_FILE_MIMES = new Set([
   "text/csv",
 ]);
 
-function buildPrompt(message: string, resources: Resource[]): string {
+function buildPrompt(
+  message: string,
+  resources: Resource[],
+  webSearchEnabled: boolean
+): string {
   const docList = resources
     .map((r, i) => {
       if (r.type === "url") {
@@ -58,9 +62,17 @@ Citation rules (critical):
 - ALWAYS cite user's uploaded sources first when used. Each citation must use sourceIndex matching [1], [2], etc.
 - For PDFs and uploaded files, include page when known (page field) and reference inline as [1 p.12] in the answer.
 - Set source to "document" for user sources. Include their url field when the source has a URL.
-- Only add source: "web" citations for information NOT in user sources — include a real https url from url_context/search.
-- Every factual claim in answer should trace to a citation from documents when possible.
 - Do not invent sourceIndex values — only use indices from the source list.
+${
+  webSearchEnabled
+    ? `- Web search is ON: you may supplement with google_search only when user sources lack the answer. Mark those citations source: "web" with a real https url. User sources still take priority.`
+    : `- Web search is OFF (document-only mode):
+  • Use ONLY the user's listed sources and inline files. Do NOT use google_search.
+  • Do NOT cite Medium, blogs, or any URL not in the source list above.
+  • Every factual claim must trace to a user source citation.
+  • If the sources do not contain enough information to answer, respond honestly in "answer" that nothing relevant was found in the current documents, and tell the user to turn on **Web search** near the chat box and ask again — or add more documentation.
+  • In that case: code, comparison, and diagram should be null; citations empty or only from user sources.`
+}
 
 Mermaid diagram rules (when user asks for a diagram):
 - Set suggestedTab to "diagram" and provide a valid diagram string.
@@ -69,8 +81,7 @@ Mermaid diagram rules (when user asks for a diagram):
 - Avoid parentheses in unquoted labels. Keep node IDs simple (A, B, C1).
 
 Research rules:
-- Ground answers primarily in provided documents/URLs/files via url_context and inline files.
-- Use web search (url_context) only to supplement gaps — mark those citations source: "web".
+- Ground answers in the user's provided documents/URLs/files via url_context (for their links) and inline files.
 - LangChain 1.x: create_agent only, never AgentExecutor.
 - Google ADK: Agent class with run().
 - Comparison: LangChain first, Google ADK second, same task, suggestedTab "comparison", code null.
@@ -98,10 +109,11 @@ interface ParsedResearchResponse {
 export async function researchWithGemini(
   apiKey: string,
   message: string,
-  resources: Resource[]
+  resources: Resource[],
+  webSearchEnabled = false
 ): Promise<ResearchResponse> {
   const parts: { text?: string; inline_data?: { mime_type: string; data: string } }[] = [
-    { text: buildPrompt(message, resources) },
+    { text: buildPrompt(message, resources, webSearchEnabled) },
   ];
 
   for (const r of resources) {
@@ -116,7 +128,14 @@ export async function researchWithGemini(
   }
 
   const urlResources = resources.filter((r) => r.type === "url" && r.url);
-  const useUrlTools = urlResources.length > 0;
+  const tools: Record<string, Record<string, never>>[] = [];
+  if (urlResources.length > 0) {
+    tools.push({ url_context: {} });
+  }
+  if (webSearchEnabled) {
+    tools.push({ google_search: {} });
+  }
+  const useTools = tools.length > 0;
 
   const body: Record<string, unknown> = {
     contents: [{ parts }],
@@ -124,12 +143,12 @@ export async function researchWithGemini(
       temperature: 0.3,
       maxOutputTokens: 8192,
       // Gemini rejects tools + responseMimeType together on 2.5-flash.
-      ...(useUrlTools ? {} : { responseMimeType: "application/json" }),
+      ...(useTools ? {} : { responseMimeType: "application/json" }),
     },
   };
 
-  if (useUrlTools) {
-    body.tools = [{ url_context: {} }, { google_search: {} }];
+  if (useTools) {
+    body.tools = tools;
   }
 
   const res = await fetch(
@@ -156,10 +175,13 @@ export async function researchWithGemini(
   if (!text) throw new Error("Empty response from Gemini");
 
   const parsed = parseJson<ParsedResearchResponse>(text);
-  const citations: ChatCitation[] = enrichCitations(
+  let citations: ChatCitation[] = enrichCitations(
     parsed.citations,
     resources
   );
+  if (!webSearchEnabled) {
+    citations = citations.filter((c) => c.source !== "web");
+  }
 
   const diagram = sanitizeMermaidDiagram(parsed.diagram);
 

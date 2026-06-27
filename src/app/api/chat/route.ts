@@ -8,9 +8,10 @@ export async function POST(request: Request) {
       message: string;
       resources: Resource[];
       apiKey?: string;
+      webSearchEnabled?: boolean;
     };
 
-    const { message, resources, apiKey: clientKey } = body;
+    const { message, resources, apiKey: clientKey, webSearchEnabled } = body;
 
     if (!message?.trim()) {
       return NextResponse.json({ error: "Message required" }, { status: 400 });
@@ -27,7 +28,8 @@ export async function POST(request: Request) {
     const result = await researchWithGemini(
       apiKey,
       message,
-      resources ?? []
+      resources ?? [],
+      webSearchEnabled === true
     );
 
     return NextResponse.json(result);

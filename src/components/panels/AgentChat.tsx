@@ -110,6 +110,8 @@ export function AgentChat() {
     apiKey,
     resources,
     selectResource,
+    webSearchEnabled,
+    setWebSearchEnabled,
   } = useApp();
   const [input, setInput] = useState("");
   const [scopedIds, setScopedIds] = useState<string[] | null>(null);
@@ -294,7 +296,11 @@ export function AgentChat() {
               Research Assistant
             </h2>
             <p className="text-xs text-zinc-500">
-              {apiKey ? "Gemini · multi-document Q&A" : "Add Gemini key first"}
+              {apiKey
+                ? webSearchEnabled
+                  ? "Gemini · docs + web search"
+                  : "Gemini · your documents only"
+                : "Add Gemini key first"}
             </p>
           </div>
         </div>
@@ -399,6 +405,37 @@ export function AgentChat() {
       )}
 
       <div className="relative border-t border-zinc-800 p-3">
+        <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-zinc-300">Web search</p>
+            <p className="text-[10px] leading-snug text-zinc-500">
+              {webSearchEnabled
+                ? "May cite pages outside your sources"
+                : "Answers only from your sources"}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={webSearchEnabled}
+            onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+              webSearchEnabled ? "bg-violet-600" : "bg-zinc-700"
+            }`}
+            title={
+              webSearchEnabled
+                ? "Turn off web search"
+                : "Turn on web search"
+            }
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                webSearchEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
         {listening && (
           <p className="mb-2 flex items-center gap-1.5 text-[10px] text-violet-400">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />

@@ -17,6 +17,10 @@ import {
   setStoredApiKey,
 } from "@/lib/api-key-storage";
 import { fallbackResourceName } from "@/lib/page-title";
+import {
+  getStoredWebSearchEnabled,
+  setStoredWebSearchEnabled,
+} from "@/lib/web-search-storage";
 import type {
   ArtifactMeta,
   CanvasTab,
@@ -101,6 +105,8 @@ interface AppContextValue {
   apiKey: string | null;
   setApiKey: (key: string | null) => void;
   loadDemo: (id: DemoId) => void;
+  webSearchEnabled: boolean;
+  setWebSearchEnabled: (enabled: boolean) => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -122,6 +128,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [apiKey, setApiKeyState] = useState<string | null>(() =>
     typeof window === "undefined" ? null : getStoredApiKey()
   );
+  const [webSearchEnabled, setWebSearchEnabledState] = useState(() =>
+    typeof window === "undefined" ? false : getStoredWebSearchEnabled()
+  );
+
+  const setWebSearchEnabled = useCallback((enabled: boolean) => {
+    setStoredWebSearchEnabled(enabled);
+    setWebSearchEnabledState(enabled);
+  }, []);
 
   const setApiKey = useCallback((key: string | null) => {
     const trimmed = key?.trim() ?? "";
@@ -311,6 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             resources: scoped.map(({ previewUrl, ...r }) => r),
             apiKey: effectiveApiKey,
             scope,
+            webSearchEnabled,
           }),
         });
 
@@ -372,7 +387,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
       }
     },
-    [resources, apiKey]
+    [resources, apiKey, webSearchEnabled]
   );
 
   const value = useMemo(
@@ -398,6 +413,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       apiKey,
       setApiKey,
       loadDemo,
+      webSearchEnabled,
+      setWebSearchEnabled,
     }),
     [
       resources,
@@ -419,6 +436,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       diagramMeta,
       apiKey,
       loadDemo,
+      webSearchEnabled,
+      setWebSearchEnabled,
     ]
   );
 
