@@ -49,11 +49,26 @@ export function enrichCitations(
       };
     }
 
+    const label =
+      typeof item.label === "string"
+        ? item.label
+        : item.label != null
+          ? String(item.label)
+          : "Source";
+    const excerpt =
+      typeof item.excerpt === "string"
+        ? item.excerpt
+        : item.excerpt != null
+          ? String(item.excerpt)
+          : undefined;
+    const citationUrl =
+      typeof item.url === "string" ? item.url : undefined;
+
     const idx =
       typeof item.sourceIndex === "number" ? item.sourceIndex - 1 : -1;
     const byIndex = idx >= 0 ? resources[idx] : undefined;
     const resource =
-      byIndex ?? matchResource(item.label, item.url ?? undefined, resources);
+      byIndex ?? matchResource(label, citationUrl, resources);
 
     const isWeb = item.source === "web" && !resource;
 
@@ -61,11 +76,11 @@ export function enrichCitations(
       typeof item.page === "number" && item.page > 0 ? item.page : undefined;
 
     return {
-      label: resource?.name ?? item.label,
-      excerpt: item.excerpt,
+      label: resource?.name ?? label,
+      excerpt,
       url: isWeb
-        ? (item.url ?? undefined)
-        : (resource?.url ?? item.url ?? undefined),
+        ? citationUrl
+        : (resource?.url ?? citationUrl),
       resourceId: resource?.id,
       page,
       source: isWeb ? "web" : "document",

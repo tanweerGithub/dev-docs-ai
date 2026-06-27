@@ -165,8 +165,81 @@ interface ParsedResearchResponse {
   citations?: (string | RawCitation)[];
   code?: ResearchResponse["code"];
   comparison?: ResearchResponse["comparison"];
-  diagram?: string | null;
+  diagram?: unknown;
   suggestedTab?: ResearchResponse["suggestedTab"];
+}
+
+function coerceToString(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["mermaid", "diagram", "text", "content", "code", "value"]) {
+      if (typeof record[key] === "string") return record[key] as string;
+    }
+  }
+  return null;
+}
+
+function normalizeParsedResponse(
+  parsed: ParsedResearchResponse
+): ParsedResearchResponse {
+  const answer = coerceToString(parsed.answer) ?? "";
+
+  let diagram = coerceToString(parsed.diagram);
+  let code = parsed.code as unknown;
+
+  if (!diagram && code && typeof code === "object") {
+    const codeObj = code as Record<string, unknown>;
+    if (
+      typeof codeObj.code === "string" &&
+      /^(graph|flowchart|sequenceDiagram)/i.test(codeObj.code.trim())
+    ) {
+      diagram = codeObj.code;
+      code = null;
+    }
+  }
+
+  if (code && typeof code === "object") {
+    const codeObj = code as Record<string, unknown>;
+    if (
+      typeof codeObj.code === "string" &&
+      typeof codeObj.language === "string"
+    ) {
+      code = {
+        language: codeObj.language,
+        code: codeObj.code,
+      };
+    } else if (typeof codeObj.code === "string") {
+      code = { language: "python", code: codeObj.code };
+    } else {
+      code = null;
+    }
+  }
+
+  const validTabs = new Set([
+    "document",
+    "playground",
+    "comparison",
+    "diagram",
+    null,
+  ]);
+  const suggestedTab = validTabs.has(parsed.suggestedTab ?? null)
+    ? parsed.suggestedTab
+    : diagram
+      ? "diagram"
+      : null;
+
+  return {
+    ...parsed,
+    answer,
+    diagram,
+    code: (code as ResearchResponse["code"]) ?? null,
+    suggestedTab,
+  };
 }
 
 interface GeminiApiResponse {
@@ -387,7 +460,7 @@ export async function researchWithGemini(
     };
   }
 
-  let parsed: ParsedResearchResponse;
+  let parsed: ParsedResearchResponse | null = null;
   try {
     parsed = parseJson<ParsedResearchResponse>(text);
   } catch {
@@ -398,14 +471,16 @@ export async function researchWithGemini(
       resources,
       webSearchEnabled
     );
-    if (structured?.answer?.trim()) {
-      parsed = structured;
-    } else {
-      return fallbackResponse(message, webSearchEnabled);
-    }
+    parsed = structured;
   }
 
-  if (!parsed.answer?.trim()) {
+  if (!parsed) {
+    return fallbackResponse(message, webSearchEnabled);
+  }
+
+  parsed = normalizeParsedResponse(parsed);
+
+  if (!parsed.answer.trim()) {
     return fallbackResponse(message, webSearchEnabled);
   }
 
